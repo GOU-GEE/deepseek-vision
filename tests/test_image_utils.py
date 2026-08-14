@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import re
 from types import SimpleNamespace
 from unittest import mock
 
@@ -68,6 +67,7 @@ class TestUrl:
         resp = SimpleNamespace(
             headers={"Content-Type": "image/jpeg"},
             content=jpg_bytes,
+            iter_content=lambda chunk_size: iter([jpg_bytes]),
             raise_for_status=lambda: None,
             status_code=200,
             close=lambda: None,
@@ -84,6 +84,7 @@ class TestUrl:
         resp = SimpleNamespace(
             headers={"Content-Type": "application/octet-stream"},
             content=png_bytes,
+            iter_content=lambda chunk_size: iter([png_bytes]),
             raise_for_status=lambda: None,
             status_code=200,
             close=lambda: None,
@@ -164,6 +165,7 @@ class TestSSRF:
         resp = SimpleNamespace(
             headers={"Content-Type": "image/jpeg"},
             content=jpg_bytes,
+            iter_content=lambda chunk_size: iter([jpg_bytes]),
             raise_for_status=lambda: None,
             status_code=200,
             close=lambda: None,
@@ -181,6 +183,7 @@ class TestSSRF:
         resp_ok = SimpleNamespace(
             headers={"Content-Type": "image/jpeg"},
             content=jpg_bytes,
+            iter_content=lambda chunk_size: iter([jpg_bytes]),
             raise_for_status=lambda: None,
             status_code=200,
             close=lambda: None,
@@ -219,6 +222,35 @@ class TestSSRF:
         ):
             with pytest.raises(ImageLoadError, match="拒绝访问"):
                 load_image_as_base64("https://example.com/redir")
+
+    def test_streaming_download_stops_at_hard_limit(self, monkeypatch):
+        """即使服务端不发 Content-Length，也必须边下载边执行 20MB 上限。"""
+        monkeypatch.setattr("deepseek_vision_mcp.image_utils._MAX_DOWNLOAD_BYTES", 10)
+        resp = SimpleNamespace(
+            headers={},
+            iter_content=lambda chunk_size: iter([b"123456", b"78901"]),
+            raise_for_status=lambda: None,
+            status_code=200,
+            close=lambda: None,
+        )
+        with _mock_public_dns(), mock.patch(
+            "deepseek_vision_mcp.image_utils.requests.get", return_value=resp
+        ):
+            with pytest.raises(ImageTooLargeError, match="下载上限"):
+                load_image_as_base64("https://example.com/huge.jpg")
+
+    def test_url_error_does_not_echo_query_token(self):
+        import requests as rq
+
+        with _mock_public_dns(), mock.patch(
+            "deepseek_vision_mcp.image_utils.requests.get",
+            side_effect=rq.exceptions.ConnectionError(
+                "failed https://example.com/a.jpg?token=secret"
+            ),
+        ):
+            with pytest.raises(ImageLoadError) as exc_info:
+                load_image_as_base64("https://example.com/a.jpg?token=secret")
+        assert "secret" not in str(exc_info.value)
 
 
 class TestBase64:

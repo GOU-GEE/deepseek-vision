@@ -15,10 +15,10 @@ import json
 import logging
 import sys
 
+from . import __version__
 from .config import load_config
 from .image_utils import load_image_as_base64
 from .providers import build_provider
-from . import __version__
 
 
 def _setup_logging() -> None:
@@ -48,12 +48,17 @@ def _cmd_check() -> int:
     except Exception as exc:
         print(f"[FAIL] 配置校验失败：{exc}", file=sys.stderr)
         return 1
-    print(f"[OK] 配置就绪")
+    print("[OK] 配置就绪")
     print(f"     提供商   : {cfg.provider}")
     print(f"     base_url : {cfg.base_url}")
-    print(f"     model    : {cfg.model}")
+    print(f"     models   : {' -> '.join(cfg.models)}")
+    print(f"     API Keys : {len(cfg.api_keys)} 个")
     print(f"     图片限制 : {cfg.max_image_size_kb} KB，格式 {', '.join(cfg.allowed_formats)}")
     print(f"     温度     : {cfg.temperature}")
+    print(
+        f"     会话缓存 : {'开启' if cfg.cache_enabled else '关闭'}"
+        f"（最多 {cfg.cache_max_entries} 条，TTL {cfg.cache_ttl_seconds}s）"
+    )
     if not cfg.api_key:
         print("[WARN] VISION_API_KEY 为空，调用 analyze_image 会失败", file=sys.stderr)
     return 0
@@ -78,7 +83,7 @@ def _cmd_check_clipboard() -> int:
         os.unlink(path)
     except OSError:
         pass
-    print(f"[OK] 剪贴板图片读取成功（临时文件已清理）")
+    print("[OK] 剪贴板图片读取成功（临时文件已清理）")
     return 0
 
 

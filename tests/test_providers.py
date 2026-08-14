@@ -17,6 +17,12 @@ from deepseek_vision_mcp.providers.openai_compatible import (
 DATA_URI = "data:image/jpeg;base64,AAAA"
 
 
+class FakeAPIError(Exception):
+    def __init__(self, status_code, message):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def _mock_response(text="这是一只猫", model="mock-vl", usage=None):
     if usage is None:
         usage = SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15)
@@ -206,6 +212,62 @@ class TestOpenAICompatibleProvider:
             provider = OpenAICompatibleProvider("k", "m", "https://x")
             with pytest.raises(VisionProviderError, match="timed out"):
                 provider.analyze(DATA_URI, "p")
+
+    def test_rate_limit_rotates_to_next_key(self):
+        first = mock.Mock()
+        first.chat.completions.create.side_effect = FakeAPIError(429, "rate limited")
+        second = mock.Mock()
+        second.chat.completions.create.return_value = _mock_response()
+        with mock.patch(
+            "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+            side_effect=[first, second],
+        ) as m_openai:
+            provider = OpenAICompatibleProvider(
+                "key-a", "m", "https://x", api_keys=["key-a", "key-b"]
+            )
+            result = provider.analyze(DATA_URI, "p")
+        assert result["text"] == "这是一只猫"
+        assert [call.kwargs["api_key"] for call in m_openai.call_args_list] == [
+            "key-a",
+            "key-b",
+        ]
+
+    def test_model_not_found_uses_fallback_model(self):
+        client = mock.Mock()
+        client.chat.completions.create.side_effect = [
+            FakeAPIError(404, "model missing"),
+            _mock_response(model="backup-vl"),
+        ]
+        with mock.patch(
+            "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+            return_value=client,
+        ):
+            provider = OpenAICompatibleProvider(
+                "k", "primary-vl", "https://x", models=["primary-vl", "backup-vl"]
+            )
+            result = provider.analyze(DATA_URI, "p")
+        assert result["model"] == "backup-vl"
+        assert [c.kwargs["model"] for c in client.chat.completions.create.call_args_list] == [
+            "primary-vl",
+            "backup-vl",
+        ]
+
+    def test_error_redacts_configured_key(self):
+        client = mock.Mock()
+        client.chat.completions.create.side_effect = FakeAPIError(
+            401, "invalid credential secret-key-value"
+        )
+        with mock.patch(
+            "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+            return_value=client,
+        ):
+            provider = OpenAICompatibleProvider(
+                "secret-key-value", "m", "https://x"
+            )
+            with pytest.raises(VisionProviderError) as exc_info:
+                provider.analyze(DATA_URI, "p")
+        assert "secret-key-value" not in str(exc_info.value)
+        assert "***" in str(exc_info.value)
 
 
 class TestProviderSwitch:

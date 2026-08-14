@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import openai
 from openai import OpenAI
@@ -47,6 +47,10 @@ _STATUS_HINTS: Dict[int, str] = {
 _TIMEOUT_HINT = "请求超时：请检查网络连接，或调大 VISION_TIMEOUT_SECONDS"
 _CONNECTION_HINT = "网络连接失败：请检查网络与 VISION_BASE_URL 是否可达"
 
+# 这些错误适合切换 Key 或模型；400 等确定性参数错误则立即返回，避免无效请求风暴。
+_ROTATE_KEY_STATUSES = {401, 403, 429}
+_FALLBACK_MODEL_STATUSES = {404, 429, 500, 502, 503, 504}
+
 
 def _status_hint(exc: Exception) -> str:
     """把异常映射为可执行的修复指引。"""
@@ -70,19 +74,30 @@ class OpenAICompatibleProvider(BaseVisionProvider):
         base_url: str,
         timeout_seconds: int = 60,
         temperature: float = 0.3,
+        api_keys: Optional[List[str]] = None,
+        models: Optional[List[str]] = None,
     ) -> None:
-        self.api_key = api_key
+        self.api_keys = list(dict.fromkeys(api_keys or [api_key]))
+        self.api_key = self.api_keys[0]
         self.model = model
+        self.models = list(dict.fromkeys(models or [model]))
+        if model not in self.models:
+            self.models.insert(0, model)
         self.base_url = base_url
         self.timeout_seconds = timeout_seconds
         self.temperature = temperature
         # 某些网关要求 Authorization 为 "Bearer <key>"，openai 客户端默认即如此。
-        self._client = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=timeout_seconds,
-            max_retries=CLIENT_MAX_RETRIES,
-        )
+        self._clients = [
+            OpenAI(
+                api_key=key,
+                base_url=base_url,
+                timeout=timeout_seconds,
+                max_retries=CLIENT_MAX_RETRIES,
+            )
+            for key in self.api_keys
+        ]
+        # 保留首客户端属性，兼容现有扩展与测试。
+        self._client = self._clients[0]
 
     def _build_messages(
         self, image_data_uris: List[str], prompt: str
@@ -143,29 +158,25 @@ class OpenAICompatibleProvider(BaseVisionProvider):
         """
         return self.analyze_multi([image_data_uri], prompt)
 
-    def analyze_multi(
-        self, image_data_uris: List[str], prompt: str
+    def _analyze_candidate(
+        self,
+        client: OpenAI,
+        model: str,
+        image_data_uris: List[str],
+        prompt: str,
     ) -> Dict[str, Any]:
-        """分析一张或多张图片（多图用于对比/关联分析）。"""
+        """用一个确定的 Key + 模型组合请求，处理 token 升档。"""
         last_response: Any = None
         last_max_tokens = TOKEN_STEPS[-1]
-        last_error: Exception | None = None
 
         for max_tokens in TOKEN_STEPS:
             last_max_tokens = max_tokens
-            try:
-                response = self._client.chat.completions.create(
-                    model=self.model,
-                    messages=self._build_messages(image_data_uris, prompt),
-                    max_tokens=max_tokens,
-                    temperature=self.temperature,
-                )
-            except Exception as exc:  # 网络错误、401、限流等统一包装
-                hint = _status_hint(exc)
-                raise VisionProviderError(
-                    f"调用视觉模型失败（model={self.model}, base_url={self.base_url}）："
-                    f"{exc}{' ' + hint if hint else ''}"
-                ) from exc
+            response = client.chat.completions.create(
+                model=model,
+                messages=self._build_messages(image_data_uris, prompt),
+                max_tokens=max_tokens,
+                temperature=self.temperature,
+            )
 
             last_response = response
             try:
@@ -178,6 +189,8 @@ class OpenAICompatibleProvider(BaseVisionProvider):
                 raise
 
             if not outcome["truncated"]:
+                if not getattr(response, "model", None):
+                    outcome["model"] = model
                 return outcome
             # 有内容但被截断：升档重试，若已到最大档则返回现有结果（尽力而为）
             logger.info("输出被截断（max_tokens=%s），升档重试", max_tokens)
@@ -185,11 +198,75 @@ class OpenAICompatibleProvider(BaseVisionProvider):
 
         # 全部档位都截断：返回最后一次的非空结果
         outcome = self._extract(last_response, last_max_tokens)
+        if not getattr(last_response, "model", None):
+            outcome["model"] = model
         outcome["text"] += "\n\n（注意：输出较长，可能仍被截断）"
         return outcome
 
+    def _safe_error_text(self, exc: Exception) -> str:
+        """避免上游异常意外把配置的 API Key 回显到工具结果。"""
+        text = str(exc)
+        for key in self.api_keys:
+            if key:
+                text = text.replace(key, "***")
+        return text
+
+    def analyze_multi(
+        self, image_data_uris: List[str], prompt: str
+    ) -> Dict[str, Any]:
+        """分析图片；Key 限流/失效时轮换，必要时按模型链降级。"""
+        last_exc: Exception | None = None
+        last_model = self.model
+
+        for model_index, model in enumerate(self.models):
+            last_model = model
+            for key_index, client in enumerate(self._clients):
+                try:
+                    return self._analyze_candidate(client, model, image_data_uris, prompt)
+                except VisionProviderError as exc:
+                    # 空内容/推理模式等模型级问题：跳到下一个模型，而非换 Key。
+                    last_exc = exc
+                    logger.warning("模型 %s 返回不可用内容，尝试降级链下一项", model)
+                    break
+                except Exception as exc:  # 网络错误、401、限流等统一处理
+                    last_exc = exc
+                    status = getattr(exc, "status_code", None)
+                    has_next_key = key_index + 1 < len(self._clients)
+                    has_next_model = model_index + 1 < len(self.models)
+
+                    if status in _ROTATE_KEY_STATUSES and has_next_key:
+                        logger.warning(
+                            "视觉 API HTTP %s，轮换到第 %d 个 Key",
+                            status,
+                            key_index + 2,
+                        )
+                        continue
+                    if status in _FALLBACK_MODEL_STATUSES and has_next_model:
+                        logger.warning("模型 %s 不可用（HTTP %s），尝试备用模型", model, status)
+                        break
+                    # 连接/超时在 SDK 内置重试后仍失败时，也允许备用模型接手。
+                    if isinstance(
+                        exc, (openai.APITimeoutError, openai.APIConnectionError)
+                    ) and has_next_model:
+                        break
+
+                    hint = _status_hint(exc)
+                    detail = self._safe_error_text(exc)
+                    raise VisionProviderError(
+                        f"调用视觉模型失败（model={model}, base_url={self.base_url}）："
+                        f"{detail}{' ' + hint if hint else ''}"
+                    ) from exc
+
+        detail = self._safe_error_text(last_exc) if last_exc else "未知错误"
+        hint = _status_hint(last_exc) if last_exc else ""
+        raise VisionProviderError(
+            f"所有 Key/模型均调用失败（最后模型={last_model}, base_url={self.base_url}）："
+            f"{detail}{' ' + hint if hint else ''}"
+        ) from last_exc
+
     def close(self) -> None:
-        try:
-            self._client.close()
-        except Exception:
-            pass
+        for client in self._clients:
+            try:
+                client.close()
+            except Exception:
+                pass

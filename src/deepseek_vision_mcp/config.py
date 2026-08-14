@@ -29,8 +29,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULTS: Dict[str, Any] = {
     # 视觉模型 API Key（无默认值，必须由用户配置）
     "VISION_API_KEY": "",
+    # 可选：逗号分隔多个 Key；429/401/403 时自动轮换。未设置时使用 VISION_API_KEY。
+    "VISION_API_KEYS": "",
     # 模型名称（默认智谱 glm-4.6v-flash：GLM-4.6V 免费版，免费视觉模型里效果最好）
     "VISION_MODEL": "glm-4.6v-flash",
+    # 可选：同一服务商下的模型降级链（逗号分隔）；主模型始终排在第一位。
+    "VISION_MODELS": "",
     # OpenAI 兼容 API 基础 URL（默认指向智谱 AI）
     "VISION_BASE_URL": "https://open.bigmodel.cn/api/paas/v4",
     # 图片大小限制（KB），超过会尝试压缩，压缩后仍超限则报错
@@ -51,6 +55,10 @@ DEFAULTS: Dict[str, Any] = {
     "VISION_CONFIG_FILE": "",
     # 预留：服务商特殊接口格式的扩展名（本版本仅实现 openai_compatible）
     "VISION_PROVIDER": "openai_compatible",
+    # 会话内结果缓存（只存哈希与识别文本，不落盘、不保存图片）
+    "VISION_CACHE_ENABLED": "true",
+    "VISION_CACHE_MAX_ENTRIES": 128,
+    "VISION_CACHE_TTL_SECONDS": 3600,
 }
 
 # 可解析为布尔值的字符串
@@ -70,7 +78,9 @@ class VisionConfig:
     """解析后的视觉配置。"""
 
     api_key: str
+    api_keys: list[str]
     model: str
+    models: list[str]
     base_url: str
     max_image_size_kb: int
     timeout_seconds: int
@@ -81,6 +91,9 @@ class VisionConfig:
     use_config_file: bool
     config_file: Path
     provider: str
+    cache_enabled: bool
+    cache_max_entries: int
+    cache_ttl_seconds: int
     # 保留所有原始配置项，便于排查与扩展
     raw: Dict[str, Any] = field(default_factory=dict)
 
@@ -103,6 +116,16 @@ class VisionConfig:
             raise ValueError("VISION_TEMPERATURE 必须在 0 到 2 之间。")
         if self.download_timeout_seconds <= 0:
             raise ValueError("VISION_DOWNLOAD_TIMEOUT_SECONDS 必须为正整数。")
+        if self.cache_max_entries <= 0:
+            raise ValueError("VISION_CACHE_MAX_ENTRIES 必须为正整数。")
+        if self.cache_ttl_seconds <= 0:
+            raise ValueError("VISION_CACHE_TTL_SECONDS 必须为正整数。")
+
+
+def _to_list(value: Any) -> list[str]:
+    """把 JSON 数组或逗号分隔字符串规范化为非空字符串列表。"""
+    items = value if isinstance(value, (list, tuple)) else str(value).split(",")
+    return [str(item).strip() for item in items if str(item).strip()]
 
 
 def _load_config_json(path: Path) -> Dict[str, Any]:
@@ -163,23 +186,38 @@ def load_config(
         if key in environment and environment[key] != "":
             merged[key] = environment[key]
 
+    # 单 Key 环境变量也必须覆盖 config.json 中的多 Key，保持既定三级优先级。
+    if environment.get("VISION_API_KEYS"):
+        key_values = _to_list(environment["VISION_API_KEYS"])
+    elif environment.get("VISION_API_KEY"):
+        key_values = _to_list(environment["VISION_API_KEY"])
+    else:
+        key_values = _to_list(merged["VISION_API_KEYS"]) or _to_list(
+            merged["VISION_API_KEY"]
+        )
+    api_keys = list(dict.fromkeys(key_values))
+    primary_model = str(merged["VISION_MODEL"]).strip()
+    configured_models = _to_list(merged["VISION_MODELS"])
+    models = [primary_model, *[m for m in configured_models if m != primary_model]]
+
     cfg = VisionConfig(
-        api_key=str(merged["VISION_API_KEY"]),
-        model=str(merged["VISION_MODEL"]),
+        api_key=api_keys[0] if api_keys else "",
+        api_keys=api_keys,
+        model=primary_model,
+        models=models,
         base_url=str(merged["VISION_BASE_URL"]).rstrip("/"),
         max_image_size_kb=int(merged["VISION_MAX_IMAGE_SIZE_KB"]),
         timeout_seconds=int(merged["VISION_TIMEOUT_SECONDS"]),
         temperature=float(merged["VISION_TEMPERATURE"]),
-        allowed_formats=[
-            f.strip().lower()
-            for f in str(merged["VISION_ALLOWED_FORMATS"]).split(",")
-            if f.strip()
-        ],
+        allowed_formats=[f.lower() for f in _to_list(merged["VISION_ALLOWED_FORMATS"])],
         download_timeout_seconds=int(merged["VISION_DOWNLOAD_TIMEOUT_SECONDS"]),
         allow_private_urls=_to_bool(merged["VISION_ALLOW_PRIVATE_IMAGE_URLS"]),
         use_config_file=use_config_file,
         config_file=config_path,
         provider=str(merged["VISION_PROVIDER"]).strip().lower(),
+        cache_enabled=_to_bool(merged["VISION_CACHE_ENABLED"]),
+        cache_max_entries=int(merged["VISION_CACHE_MAX_ENTRIES"]),
+        cache_ttl_seconds=int(merged["VISION_CACHE_TTL_SECONDS"]),
         raw=merged,
     )
     if validate:

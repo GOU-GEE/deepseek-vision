@@ -18,13 +18,14 @@ try:  # mcp >= 2.0
 except ImportError:  # mcp 1.x
     from mcp.server.fastmcp import FastMCP as _ServerBase
 
+from . import __version__
+from .cache import ResultCache, make_cache_key
 from .clipboard import ClipboardError, save_clipboard_image
 from .config import load_config
 from .image_utils import ImageLoadError, ImageTooLargeError, load_image_as_base64
 from .prompts import TASK_PROMPTS, TaskName
 from .providers import build_provider
 from .providers.base import VisionProviderError
-from . import __version__
 
 logger = logging.getLogger("deepseek_vision_mcp")
 
@@ -50,6 +51,7 @@ def _build_result(
     model: Optional[str] = None,
     usage: Optional[Dict[str, Any]] = None,
     error: Optional[str] = None,
+    cached: bool = False,
 ) -> str:
     """把结果统一序列化为 JSON 字符串返回给主模型。"""
     payload = {
@@ -57,6 +59,7 @@ def _build_result(
         "result": result,
         "model": model,
         "usage": usage or {},
+        "cached": cached,
     }
     if error is not None:
         payload["error"] = error
@@ -71,6 +74,16 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
             （因此未配置 API Key 也能启动 Server，调用工具时返回清晰错误）。
     """
     cfg_holder: Dict[str, Any] = {"config": config}
+    cache_holder: Dict[str, Any] = {"signature": None, "cache": None}
+
+    def get_cache(cfg: Any) -> Optional[ResultCache]:
+        if not getattr(cfg, "cache_enabled", False):
+            return None
+        signature = (cfg.cache_max_entries, cfg.cache_ttl_seconds)
+        if cache_holder["signature"] != signature:
+            cache_holder["signature"] = signature
+            cache_holder["cache"] = ResultCache(*signature)
+        return cache_holder["cache"]
 
     mcp = _ServerBase(
         SERVER_NAME,
@@ -111,7 +124,7 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
                 cfg = load_config()  # 未配置 Key 时抛 ValueError
 
             effective_prompt = prompt or TASK_PROMPTS[task]
-            logger.info("analyze_image 被调用，task=%s prompt=%r", task, effective_prompt)
+            logger.info("analyze_image 被调用，task=%s", task)
             data_uri, mime = load_image_as_base64(
                 image,
                 max_size_kb=cfg.max_image_size_kb,
@@ -121,11 +134,28 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
             )
             logger.info("图片加载成功（%s，%.1f KB）", mime, len(data_uri) / 1024 / 1.37)
 
+            cache = get_cache(cfg)
+            cache_key = make_cache_key(
+                [data_uri], effective_prompt, cfg.base_url, getattr(cfg, "models", [cfg.model])
+            )
+            cached_outcome = cache.get(cache_key) if cache else None
+            if cached_outcome is not None:
+                logger.info("命中会话缓存，跳过视觉 API 调用")
+                return _build_result(
+                    success=True,
+                    result=cached_outcome["text"],
+                    model=cached_outcome.get("model") or cfg.model,
+                    usage=cached_outcome.get("usage"),
+                    cached=True,
+                )
+
             provider = build_provider(cfg)
             try:
                 outcome = provider.analyze(data_uri, effective_prompt)
             finally:
                 provider.close()
+            if cache:
+                cache.set(cache_key, outcome)
 
             return _build_result(
                 success=True,
@@ -231,11 +261,27 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
                     "并分别描述每张图片的关键内容。"
                 )
 
+            cache = get_cache(cfg)
+            cache_key = make_cache_key(
+                data_uris, prompt, cfg.base_url, getattr(cfg, "models", [cfg.model])
+            )
+            cached_outcome = cache.get(cache_key) if cache else None
+            if cached_outcome is not None:
+                return _build_result(
+                    success=True,
+                    result=cached_outcome["text"],
+                    model=cached_outcome.get("model") or cfg.model,
+                    usage=cached_outcome.get("usage"),
+                    cached=True,
+                )
+
             provider = build_provider(cfg)
             try:
                 outcome = provider.analyze_multi(data_uris, prompt)
             finally:
                 provider.close()
+            if cache:
+                cache.set(cache_key, outcome)
 
             return _build_result(
                 success=True,
@@ -273,6 +319,8 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
                 "version": __version__,
                 "configured": configured,
                 "model": cfg.model,
+                "models": getattr(cfg, "models", [cfg.model]),
+                "api_key_count": len(getattr(cfg, "api_keys", [cfg.api_key])),
                 "base_url": cfg.base_url,
                 "provider": cfg.provider,
                 "max_image_size_kb": cfg.max_image_size_kb,
@@ -280,8 +328,14 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
                 "temperature": cfg.temperature,
                 "allowed_formats": cfg.allowed_formats,
                 "allow_private_urls": cfg.allow_private_urls,
-                "api_key_masked": (cfg.api_key[:4] + "****") if configured else "",
+                "api_key_masked": "****" if configured else "",
+                "cache_enabled": getattr(cfg, "cache_enabled", False),
+                "cache_max_entries": getattr(cfg, "cache_max_entries", 0),
+                "cache_ttl_seconds": getattr(cfg, "cache_ttl_seconds", 0),
             }
+            cache = get_cache(cfg)
+            if cache:
+                status["cache"] = cache.stats()
             status["success"] = configured
             status["result"] = (
                 "视觉服务已就绪。" if configured

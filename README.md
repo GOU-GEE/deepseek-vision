@@ -1,5 +1,9 @@
 # deepseek-vision-mcp
 
+[![CI](https://github.com/GOU-GEE/deepseek-vision/actions/workflows/test.yml/badge.svg)](https://github.com/GOU-GEE/deepseek-vision/actions/workflows/test.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 给 **DeepSeek（及其他纯文本大模型）装上「眼睛」** 的开源 MCP Server。
 
 DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目的思路是：
@@ -213,7 +217,8 @@ MCP Server 提供 4 个工具：
 （流程图/架构图）、`analyze_chart`（数据图表）、`code_from_screenshot`（代码截图）。
 
 所有工具统一返回 JSON：`{"success": true/false, "result": "...", "model": "...",
-"usage": {...}, "error": "..."}`。失败时 `error` 字段给出错误码
+"usage": {...}, "cached": true/false, "error": "..."}`。`cached: true` 表示命中
+会话内缓存、未再次消耗视觉 API；失败时 `error` 字段给出错误码
 （`CONFIG_ERROR` / `IMAGE_LOAD_FAILED` / `IMAGE_TOO_LARGE` / `VISION_API_ERROR` /
 `CLIPBOARD_ERROR` / `INVALID_ARGUMENT` / `INTERNAL_ERROR`），`result` 附带可执行的
 修复指引（如 401 → 检查 Key、429 → 稍后重试），主模型可直接转述给用户。
@@ -334,7 +339,9 @@ pytest -v
 | 变量 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `VISION_API_KEY` | ✅ | 无 | 视觉模型 API Key |
+| `VISION_API_KEYS` | | 无 | 多 Key，逗号分隔；429/401/403 时自动轮换，优先于单 Key |
 | `VISION_MODEL` | | `glm-4.6v-flash` | 视觉模型名称（默认推荐智谱免费版） |
+| `VISION_MODELS` | | 无 | 同一服务商下的模型降级链，逗号分隔 |
 | `VISION_BASE_URL` | | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 API 基础 URL |
 | `VISION_MAX_IMAGE_SIZE_KB` | | `2048` | 图片大小限制（KB），超限自动压缩 |
 | `VISION_TIMEOUT_SECONDS` | | `60` | 调用视觉模型 API 的超时（秒） |
@@ -345,6 +352,9 @@ pytest -v
 | `VISION_USE_CONFIG_FILE` | | `true` | 是否读取 `config.json` |
 | `VISION_CONFIG_FILE` | | `./config.json` | `config.json` 的路径 |
 | `VISION_PROVIDER` | | `openai_compatible` | 提供商类型（预留扩展） |
+| `VISION_CACHE_ENABLED` | | `true` | 是否启用会话内识别结果缓存（不落盘） |
+| `VISION_CACHE_MAX_ENTRIES` | | `128` | 缓存最多保留的结果数（LRU） |
+| `VISION_CACHE_TTL_SECONDS` | | `3600` | 缓存有效期（秒） |
 
 ### config.json 格式
 
@@ -352,7 +362,9 @@ pytest -v
 {
   "vision": {
     "api_key": "your-api-key",
+    "api_keys": ["备用-key-1", "备用-key-2"],
     "model": "glm-4.6v-flash",
+    "models": ["glm-4.6v-flash", "glm-4v-flash"],
     "base_url": "https://open.bigmodel.cn/api/paas/v4",
     "max_image_size_kb": 2048,
     "timeout_seconds": 60
@@ -511,13 +523,14 @@ deepseek-vision-mcp/
 │       ├── __init__.py
 │       ├── server.py           # MCP Server 入口：analyze_image / analyze_clipboard / compare_images / vision_status
 │       ├── config.py           # 配置加载（.env / 环境变量 / config.json）
+│       ├── cache.py            # 会话内 TTL/LRU 结果缓存（不保存图片）
 │       ├── image_utils.py      # 图片加载、编码、校验、压缩、SSRF 防护
 │       ├── clipboard.py        # 跨平台剪贴板图片读取（Win/macOS/Linux）
 │       ├── prompts.py          # 预置任务提示词（OCR/UI/报错/图表等 7 种）
 │       ├── providers/
 │       │   ├── __init__.py     # build_provider 分发
 │       │   ├── base.py         # 视觉模型抽象基类（扩展点）
-│       │   └── openai_compatible.py  # OpenAI 兼容实现（重试/升档/错误指引）
+│       │   └── openai_compatible.py  # OpenAI 兼容实现（多 Key/模型降级/重试）
 │       ├── main.py             # 命令行入口（--check / --check-clipboard / --test-image）
 │       └── __main__.py
 ├── skills/
@@ -532,8 +545,9 @@ deepseek-vision-mcp/
 ├── scripts/
 │   ├── install.sh
 │   └── test_mcp.sh
-├── tests/                      # pytest 测试（77 个用例）
-└── .github/workflows/test.yml  # CI（含真实 MCP stdio 握手冒烟）
+├── tests/                      # pytest 测试（88 个用例）
+├── SECURITY.md                # 漏洞报告方式与发布安全清单
+└── .github/workflows/         # 测试、MCP 1.x/2.x 兼容与 PyPI 发布
 ```
 
 ---
@@ -546,7 +560,8 @@ pytest -v
 ```
 
 测试覆盖：本地图片 / URL / base64 三种输入、无效 API Key、文件不存在、
-图片超限压缩、格式校验、多提供商切换、配置优先级等。测试全部 mock 掉
+图片超限压缩、流式下载上限、SSRF、多 Key 轮换、模型降级、会话缓存、
+多提供商切换、配置优先级等。测试全部 mock 掉
 外部 API，**不需要真实 Key 即可运行**。
 
 ---
@@ -560,6 +575,15 @@ A：没有配置 API Key。复制 `.env.example` 为 `.env` 并填入 Key，或�
 **Q：调用工具返回 `VISION_API_ERROR`？**
 A：视觉模型 API 调用失败。常见原因：Key 无效、`VISION_BASE_URL` 写错、
 模型名不存在、余额不足、网络超时。按工具返回的 `result` 中的提示排查。
+
+**Q：免费 API 经常 429 怎么办？**
+A：可用 `VISION_API_KEYS=key-a,key-b` 配置多个 Key 自动轮换，并用
+`VISION_MODELS=glm-4.6v-flash,glm-4v-flash` 配置同一服务商下的备用模型。
+只有全部 Key/模型都不可用时，工具才会返回最终错误。
+
+**Q：缓存会保存我的图片吗？**
+A：不会。默认缓存仅在 MCP Server 进程内存中保存图片内容的 SHA256 哈希与识别文本，
+不保存图片、不落盘，进程退出即清空；可设置 `VISION_CACHE_ENABLED=false` 关闭。
 
 **Q：返回 `IMAGE_LOAD_FAILED`？**
 A：图片加载失败。检查本地路径是否存在、URL 是否可访问（带 `http(s)://`）、

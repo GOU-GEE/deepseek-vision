@@ -69,9 +69,10 @@ qwen-vl-plus），再把识别文本返回给主模型。
    compare_images(images=["./a.png", "https://example.com/b.jpg"], prompt="对比两者差异")
    ```
 
-5. 工具返回 JSON：`{"success": true/false, "result": "...", "model": "...", "usage": {...}}`。
+5. 工具返回 JSON：`{"success": true/false, "result": "...", "model": "...", "usage": {...}, "cached": true/false}`。
    - `success: true`：把 `result` 中的识别文本直接作为回答呈现给用户，
-     可适当补充说明（来自哪个模型）。
+     可适当补充说明（来自哪个模型）；`cached: true` 只表示命中同会话缓存，
+     内容仍可正常使用。
    - `success: false`：把 `error` 字段（如 `IMAGE_LOAD_FAILED`、
      `VISION_API_ERROR`、`CONFIG_ERROR`、`CLIPBOARD_ERROR`）和 `result` 中的
      错误信息转告用户，并给出修复建议（检查路径/URL 是否有效、API Key 是否
@@ -80,8 +81,9 @@ qwen-vl-plus），再把识别文本返回给主模型。
 ## 注意事项
 
 - **不要编造图片内容**：模型看不到图片时，**禁止**凭空描述图片。
-- **限流节奏**：工具返回 `VISION_API_ERROR` 且提示限流（429）时，等待
-  15~30 秒再调用一次（错峰窗口），仍失败才如实告知，**不要无限空转**。
+- **限流节奏**：Server 会先自动轮换配置的 Key 与备用模型。只有在工具最终仍返回
+  `VISION_API_ERROR` 且提示限流（429）时，才等待 15~30 秒再调用一次；仍失败则
+  如实告知，**不要无限空转**。
 - `image` 参数必须是字符串；URL 必须带 `http(s)://` 前缀；默认拒绝内网 URL
   （SSRF 防护），如需访问内网图片服务请配置 `VISION_ALLOW_PRIVATE_IMAGE_URLS=true`。
 - 本地路径以调用方（MCP Server）所在机器的文件系统为准。

@@ -4,7 +4,7 @@
 OpenAI 兼容视觉模型 API 识别，并把识别结果返回给主模型。
 """
 
-from .config import load_config, VisionConfig
+from .config import VisionConfig, load_config
 
 __version__ = "0.1.0"
 

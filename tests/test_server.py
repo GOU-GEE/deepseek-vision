@@ -7,15 +7,11 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from unittest import mock
-
-import pytest
 
 import deepseek_vision_mcp.server as server_module
 from deepseek_vision_mcp.image_utils import ImageLoadError, ImageTooLargeError
 from deepseek_vision_mcp.providers.base import VisionProviderError
-from tests.conftest import make_config
 
 DATA_URI = "data:image/jpeg;base64,QUJD"
 
@@ -91,6 +87,24 @@ class TestSuccess:
         with mock.patch.object(server_module, "build_provider", return_value=fake):
             _call_tool(vision_config, jpg_path)
         assert fake.text == "识别文本"
+
+    def test_same_image_and_prompt_uses_session_cache(self, vision_config):
+        fake = FakeProvider(text="只调用一次")
+        with mock.patch.object(
+            server_module, "build_provider", return_value=fake
+        ) as m_provider, mock.patch.object(
+            server_module,
+            "load_image_as_base64",
+            return_value=(DATA_URI, "image/jpeg"),
+        ):
+            mcp = server_module.create_server(config=vision_config)
+            fn = mcp._tool_manager._tools["analyze_image"].fn
+            first = _parse(fn("a.jpg", "相同问题"))
+            second = _parse(fn("a.jpg", "相同问题"))
+        assert first["cached"] is False
+        assert second["cached"] is True
+        assert second["result"] == "只调用一次"
+        m_provider.assert_called_once()
 
 
 class TestErrors:
@@ -330,7 +344,8 @@ class TestVisionStatus:
         raw = json.loads(fn())
         assert raw["configured"] is True
         assert raw["model"] == "glm-4.6v-flash"
-        assert raw["api_key_masked"].startswith("test")
+        assert raw["api_key_masked"] == "****"
+        assert raw["api_key_count"] == 1
 
     def test_status_not_configured(self, monkeypatch):
         for k in list(__import__("os").environ):

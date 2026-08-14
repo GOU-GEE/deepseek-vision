@@ -133,8 +133,8 @@ def _is_blocked_ip(ip_str: str) -> bool:
 def _assert_public_host(hostname: str, allow_private: bool = False) -> None:
     """校验主机名解析出的所有 IP 均为公网地址；含内网地址则拒绝。
 
-    只信任「全部 IP 都是公网」的主机，可防 DNS rebinding
-    （首次解析公网、重试解析内网绕过校验）。
+    只信任「当前解析结果全部为公网」的主机，并在每次重定向时重新校验，
+    可拒绝混合公网/内网解析结果并降低 DNS rebinding 风险。
     """
     if allow_private:
         return
@@ -172,6 +172,8 @@ def _assert_public_host(hostname: str, allow_private: bool = False) -> None:
 def _download_from_url(url: str, timeout: int, allow_private: bool = False) -> bytes:
     """下载 URL 图片，带超时、SSRF 防护与重定向限制。"""
     current = url
+    parsed_label = urlparse(url)
+    safe_url = f"{parsed_label.scheme}://{parsed_label.hostname or ''}{parsed_label.path}"
     for _ in range(_MAX_REDIRECTS + 1):
         parsed = urlparse(current)
         if parsed.scheme not in ("http", "https"):
@@ -183,36 +185,65 @@ def _download_from_url(url: str, timeout: int, allow_private: bool = False) -> b
                 current, timeout=timeout, stream=True, allow_redirects=False
             )
         except requests.exceptions.Timeout as exc:
-            raise ImageLoadError(f"下载图片超时（{timeout}s）：{url}") from exc
+            raise ImageLoadError(f"下载图片超时（{timeout}s）：{safe_url}") from exc
         except requests.exceptions.RequestException as exc:
-            raise ImageLoadError(f"下载图片失败：{url}（{exc}）") from exc
+            raise ImageLoadError(
+                f"下载图片失败：{safe_url}（{type(exc).__name__}）"
+            ) from exc
 
         # 手动跟随重定向（每跳重新做 SSRF 校验）
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("Location")
             resp.close()
             if not location:
-                raise ImageLoadError(f"重定向响应缺少 Location：{url}")
+                raise ImageLoadError(f"重定向响应缺少 Location：{safe_url}")
             current = urljoin(current, location)
             continue
 
         try:
             resp.raise_for_status()
         except requests.exceptions.Timeout as exc:
-            raise ImageLoadError(f"下载图片超时（{timeout}s）：{url}") from exc
+            resp.close()
+            raise ImageLoadError(f"下载图片超时（{timeout}s）：{safe_url}") from exc
         except requests.exceptions.RequestException as exc:
-            raise ImageLoadError(f"下载图片失败：{url}（{exc}）") from exc
-
-        raw = resp.content
-        resp.close()
-        if not raw:
-            raise ImageLoadError(f"下载到的图片内容为空：{url}")
-        if len(raw) > _MAX_DOWNLOAD_BYTES:
+            resp.close()
             raise ImageLoadError(
-                f"图片超过下载上限（{_MAX_DOWNLOAD_BYTES // 1024 // 1024} MB）：{url}"
-            )
+                f"下载图片失败：{safe_url}（HTTP {resp.status_code}）"
+            ) from exc
+
+        content_length = resp.headers.get("Content-Length")
+        if content_length:
+            try:
+                if int(content_length) > _MAX_DOWNLOAD_BYTES:
+                    resp.close()
+                    raise ImageLoadError(
+                        f"图片超过下载上限（{_MAX_DOWNLOAD_BYTES // 1024 // 1024} MB）：{safe_url}"
+                    )
+            except ValueError:
+                pass
+
+        # 必须逐块读取并边读边限流；resp.content 会先把任意大响应全部载入内存。
+        chunks = bytearray()
+        try:
+            for chunk in resp.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                chunks.extend(chunk)
+                if len(chunks) > _MAX_DOWNLOAD_BYTES:
+                    raise ImageTooLargeError(
+                        f"图片超过下载上限（{_MAX_DOWNLOAD_BYTES // 1024 // 1024} MB）：{safe_url}"
+                    )
+        except requests.exceptions.RequestException as exc:
+            raise ImageLoadError(
+                f"下载图片失败：{safe_url}（{type(exc).__name__}）"
+            ) from exc
+        finally:
+            resp.close()
+        raw = bytes(chunks)
+        if not raw:
+            raise ImageLoadError(f"下载到的图片内容为空：{safe_url}")
         return raw
-    raise ImageLoadError(f"图片 URL 重定向次数过多（>{_MAX_REDIRECTS}）：{url}")
+    raise ImageLoadError(f"图片 URL 重定向次数过多（>{_MAX_REDIRECTS}）：{safe_url}")
 
 
 # 本地文件读取前的硬性大小上限（防超大文件整读进内存；之后压缩会进一步处理）
