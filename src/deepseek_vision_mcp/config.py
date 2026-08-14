@@ -29,8 +29,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULTS: Dict[str, Any] = {
     # 视觉模型 API Key（无默认值，必须由用户配置）
     "VISION_API_KEY": "",
-    # 模型名称
-    "VISION_MODEL": "glm-4v-flash",
+    # 模型名称（默认智谱 glm-4.6v-flash：GLM-4.6V 免费版，免费视觉模型里效果最好）
+    "VISION_MODEL": "glm-4.6v-flash",
     # OpenAI 兼容 API 基础 URL（默认指向智谱 AI）
     "VISION_BASE_URL": "https://open.bigmodel.cn/api/paas/v4",
     # 图片大小限制（KB），超过会尝试压缩，压缩后仍超限则报错

@@ -15,7 +15,7 @@ class TestDefaults:
             env={"VISION_API_KEY": "k"}, config_path="", validate=False
         )
         assert cfg.api_key == "k"
-        assert cfg.model == "glm-4v-flash"
+        assert cfg.model == "glm-4.6v-flash"
         assert cfg.base_url == "https://open.bigmodel.cn/api/paas/v4"
         assert cfg.max_image_size_kb == 2048
         assert cfg.timeout_seconds == 60
@@ -54,7 +54,7 @@ class TestEnvOverride:
         cfg = load_config(
             env={"VISION_API_KEY": "k", "VISION_MODEL": ""}, config_path=""
         )
-        assert cfg.model == "glm-4v-flash"
+        assert cfg.model == "glm-4.6v-flash"
 
 
 class TestConfigFile:

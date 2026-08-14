@@ -36,7 +36,7 @@ class TestOpenAICompatibleProvider:
             return_value=fake_client,
         ) as m_openai:
             provider = OpenAICompatibleProvider(
-                api_key="k", model="glm-4v-flash", base_url="https://x/v4"
+                api_key="k", model="glm-4.6v-flash", base_url="https://x/v4"
             )
             result = provider.analyze(DATA_URI, "请描述这张图")
 
@@ -45,7 +45,7 @@ class TestOpenAICompatibleProvider:
             api_key="k", base_url="https://x/v4", timeout=60
         )
         call_kwargs = fake_client.chat.completions.create.call_args.kwargs
-        assert call_kwargs["model"] == "glm-4v-flash"
+        assert call_kwargs["model"] == "glm-4.6v-flash"
         content = call_kwargs["messages"][0]["content"]
         assert content[0] == {"type": "text", "text": "请描述这张图"}
         assert content[1]["type"] == "image_url"
@@ -89,7 +89,7 @@ class TestOpenAICompatibleProvider:
             "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
             return_value=fake_client,
         ):
-            provider = OpenAICompatibleProvider("bad-key", "glm-4v-flash", "https://x")
+            provider = OpenAICompatibleProvider("bad-key", "glm-4.6v-flash", "https://x")
             with pytest.raises(VisionProviderError, match="视觉模型失败|Incorrect API"):
                 provider.analyze(DATA_URI, "p")
 
@@ -124,13 +124,13 @@ class TestProviderSwitch:
             SimpleNamespace(
                 provider="openai_compatible",
                 api_key="z-key",
-                model="glm-4v-flash",
+                model="glm-4.6v-flash",
                 base_url="https://open.bigmodel.cn/api/paas/v4",
                 timeout_seconds=60,
             )
         )
         assert isinstance(provider, OpenAICompatibleProvider)
-        assert provider.model == "glm-4v-flash"
+        assert provider.model == "glm-4.6v-flash"
         assert provider.base_url == "https://open.bigmodel.cn/api/paas/v4"
 
     def test_build_provider_siliconflow(self):

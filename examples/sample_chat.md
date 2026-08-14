@@ -27,7 +27,7 @@ analyze_image(
 {
   "success": true,
   "result": "截图显示 Python 报错：ModuleNotFoundError: No module named 'requests'，发生在 import requests 处。可能原因：未安装 requests 库。",
-  "model": "glm-4v-flash",
+  "model": "glm-4.6v-flash",
   "usage": {"prompt_tokens": 1024, "completion_tokens": 180, "total_tokens": 1204}
 }
 ```

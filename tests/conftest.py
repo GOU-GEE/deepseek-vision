@@ -68,7 +68,7 @@ def make_config(**overrides) -> VisionConfig:
     """构造一个可用的测试配置（默认带假 API Key）。"""
     defaults = {
         "api_key": "test-key",
-        "model": "glm-4v-flash",
+        "model": "glm-4.6v-flash",
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
         "max_image_size_kb": 2048,
         "timeout_seconds": 60,

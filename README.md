@@ -4,7 +4,7 @@
 
 DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目的思路是：
 通过 **MCP Server 暴露一个 `analyze_image` 工具**，把图片交给第三方
-**OpenAI 兼容的视觉模型 API**（智谱 GLM-4V、硅基流动 Qwen2.5-VL、
+**OpenAI 兼容的视觉模型 API**（智谱 GLM-4.6V、硅基流动 Qwen2.5-VL、
 通义千问 qwen-vl-plus 等）识别，再把识别文本返回给主模型。
 配合项目自带的 **Skill 文件**，DeepSeek 主模型在遇到图片时会**自动**调用
 该工具——对用户来说，就像 DeepSeek 突然会「看图」了。
@@ -16,15 +16,34 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 
 ## 🚀 一句话安装（复制给 AI 助手，免手动操作）
 
-在 DeepSeek Harness / Codex 等智能体平台中，**把下面整段话复制发给你的 AI 助手**，
+在 DeepSeek Harness / Codex 等智能体平台中，**把下面任一段话复制发给你的 AI 助手**，
 它会自动完成：克隆仓库 → 检查并准备 Python 环境 → 安装依赖 → 配置 API Key →
 注册 MCP 服务器 → 加载 Skill → 自测图片识别。全程无需你手动敲命令。
+（现在的大模型助手已经足够聪明，**推荐直接用下面的「极简版」**；需要更明确的
+步骤指引时再用「完整版」，效果相同。）
 
 > **关于 API Key（请先读）**：
-> - ✅ **免费 Key 可以直接贴在提示词里**（如智谱 `glm-4v-flash`、硅基流动的免费模型），
+> - ✅ **免费 Key 可以直接贴在提示词里**（如智谱 `glm-4.6v-flash`、硅基流动的免费模型），
 >   把提示词中的 `YOUR_FREE_API_KEY` 换成你的 Key 再发送，助手会全程自动配置。
 > - 🔒 **付费 Key 请勿明文发给 AI 助手**：删掉提示词里的 Key 占位行，助手会引导你
 >   自己填写 `.env`，Key 只保存在你本机，不会经过对话。
+
+**极简版（推荐，一句话）**——助手足够聪明，这段就够：
+
+```text
+请帮我安装并启用 https://github.com/GOU-GEE/deepseek-vision 项目，让我的 DeepSeek
+能识别图片（默认用智谱免费视觉模型 glm-4.6v-flash）：克隆仓库 → 建 .venv 虚拟环境 →
+pip install -e ".[dev]" → 配置 API Key（如果我在下面给了免费 Key 就直接用；没给就复制
+.env.example 为 .env 并提示我自己填 VISION_API_KEY，不要向我要付费 Key 明文）→
+deepseek-vision-mcp --check 校验 → 把它注册为 MCP 服务器（command 用 .venv 的 python
+绝对路径，args 为 ["-m","deepseek_vision_mcp"]，env 配 VISION_MODEL 与 VISION_BASE_URL；
+Key 已给则填入 VISION_API_KEY，未给则省略让它自动读 .env）→ 加载 skills/ 目录 →
+最后用 examples/test_image.jpg 自测 analyze_image 工具，并汇报结果。
+
+[我的免费视觉模型 API Key（可选，免费 Key 才填；付费 Key 请删掉这一行）: YOUR_FREE_API_KEY]
+```
+
+**完整版（步骤更明确）**：
 
 ```text
 请帮我安装并启用 deepseek-vision-mcp（GitHub: https://github.com/GOU-GEE/deepseek-vision），
@@ -43,7 +62,7 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
    - Windows PowerShell: py -3.12 -m venv .venv && .venv\Scripts\Activate.ps1 && pip install -e ".[dev]"
 4. 配置 API Key：
    - 如果我在上面提供了 Key，把它写入 .env 的 VISION_API_KEY。
-     默认视觉模型为智谱 glm-4v-flash（可到 https://open.bigmodel.cn 免费申请；
+     默认视觉模型为智谱 glm-4.6v-flash（免费，可到 https://open.bigmodel.cn 申请；
      也支持硅基流动 / 通义千问，只需改 VISION_MODEL 与 VISION_BASE_URL）。
    - 如果我没有提供 Key，**不要向我要明文 Key**：把 .env.example 复制为 .env，
      提示我只需填写 .env 中的 VISION_API_KEY 一个字段，我填好后你再继续。
@@ -59,7 +78,7 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
       "args": ["-m", "deepseek_vision_mcp"],
       "env": {
         "VISION_API_KEY": "<第4步确定的Key；若用户选择自己填 .env 则此项可省略>",
-        "VISION_MODEL": "glm-4v-flash",
+        "VISION_MODEL": "glm-4.6v-flash",
         "VISION_BASE_URL": "https://open.bigmodel.cn/api/paas/v4"
       }
     }
@@ -72,21 +91,6 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
    确认能返回图片内容。若注册后当前会话还无法调用该工具，提示用户重启会话。
 
 完成后向用户汇报每一步的结果。
-```
-
-**更短的极简版**（如果助手足够聪明，这段也够用）：
-
-```text
-请帮我安装并启用 https://github.com/GOU-GEE/deepseek-vision 项目，让我的 DeepSeek
-能识别图片：克隆仓库 → 建 .venv 虚拟环境 → pip install -e ".[dev]" → 配置 API Key
-（如果我在下面给了免费 Key 就直接用；没给就复制 .env.example 为 .env 并提示我自己填
-VISION_API_KEY，不要向我要付费 Key 明文）→ deepseek-vision-mcp --check 校验 →
-把它注册为 MCP 服务器（command 用 .venv 的 python 绝对路径，args 为
-["-m","deepseek_vision_mcp"]，env 配 VISION_MODEL 与 VISION_BASE_URL；Key 已给则填入
-VISION_API_KEY，未给则省略让它自动读 .env）→ 加载 skills/ 目录 → 最后用
-examples/test_image.jpg 自测 analyze_image 工具，并汇报结果。
-
-[我的免费视觉模型 API Key（可选，免费 Key 才填；付费 Key 请删掉这一行）: YOUR_FREE_API_KEY]
 ```
 
 > 如果你更喜欢手动安装，请按下方 [快速开始](#快速开始) 操作，效果完全一样。
@@ -139,12 +143,12 @@ examples/test_image.jpg 自测 analyze_image 工具，并汇报结果。
 │  Skill: vision       │        │  └───────────┬─────────────┘  │
 │  自动触发工具调用      │        │              │ OpenAI 兼容     │
 └──────────────────────┘        │              ▼                │
-                                │  ┌─────────────────────────┐  │
-                                │  │  视觉模型 API            │  │
-                                │  │  智谱 GLM-4V /           │  │
-                                │  │  硅基流动 Qwen2.5-VL /   │  │
-                                │  │  通义千问 qwen-vl-plus   │  │
-                                │  └─────────────────────────┘  │
+                                │  ┌────────────────────────────┐  │
+                                │  │  视觉模型 API               │  │
+                                │  │  智谱 GLM-4.6V /            │  │
+                                │  │  硅基流动 Qwen2.5-VL /      │  │
+                                │  │  通义千问 qwen-vl-plus      │  │
+                                │  └────────────────────────────┘  │
                                 └───────────────────────────────┘
 ```
 
@@ -170,11 +174,16 @@ examples/test_image.jpg 自测 analyze_image 工具，并汇报结果。
 
 | 服务商 | `VISION_BASE_URL` | `VISION_MODEL` | 说明 |
 | --- | --- | --- | --- |
-| 智谱 AI | `https://open.bigmodel.cn/api/paas/v4` | `glm-4v-flash` | 有免费额度，默认配置 |
+| 智谱 AI | `https://open.bigmodel.cn/api/paas/v4` | `glm-4.6v-flash` | **免费，推荐**（GLM-4.6V 系列的免费版，当前免费视觉模型里效果最好） |
 | 硅基流动 | `https://api.siliconflow.cn/v1` | `Qwen/Qwen2.5-VL-7B-Instruct` | 部分模型免费 |
 | 通义千问 DashScope | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-vl-plus` | 阿里云百炼 |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o` / `gpt-4o-mini` | 付费 |
 | 其他兼容服务商 | 各自的 base URL | 各自的视觉模型名 | 任意 |
+
+> 💡 **推荐：智谱 `glm-4.6v-flash`**——它是智谱最新视觉模型 GLM-4.6V 系列的免费版，
+> 目前免费视觉模型里综合效果最好，也是本项目的默认配置。
+> 官方文档：<https://docs.bigmodel.cn/cn/guide/models/free/glm-4.6v-flash>，
+> 免费申请 Key：<https://open.bigmodel.cn>。
 
 > 某些服务商有**特殊接口格式**（非 OpenAI 兼容）。本项目预留了扩展点：
 > 继承 `providers/base.py` 中的 `BaseVisionProvider`，在
@@ -189,7 +198,7 @@ examples/test_image.jpg 自测 analyze_image 工具，并汇报结果。
 
 1. 打开 <https://open.bigmodel.cn>，注册并登录。
 2. 进入「API Keys」页面，创建一个 API Key（形如 `xxxxxxxx.xxxxxxxx`）。
-3. 智谱的 `glm-4v-flash` 提供免费额度，无需充值即可体验。
+3. 智谱的 `glm-4.6v-flash`（GLM-4.6V 免费版，当前免费视觉模型里效果最好）提供免费额度，无需充值即可体验。
 4. 想用其他服务商，到对应控制台申请 Key 即可（见上表）。
 
 ### 2. 安装
@@ -239,7 +248,7 @@ cp .env.example .env        # Mac / Linux
 
 ```bash
 VISION_API_KEY=你的智谱APIKey
-VISION_MODEL=glm-4v-flash
+VISION_MODEL=glm-4.6v-flash
 VISION_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 ```
 
@@ -297,7 +306,7 @@ pytest -v
 | 变量 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `VISION_API_KEY` | ✅ | 无 | 视觉模型 API Key |
-| `VISION_MODEL` | | `glm-4v-flash` | 视觉模型名称 |
+| `VISION_MODEL` | | `glm-4.6v-flash` | 视觉模型名称（默认推荐智谱免费版） |
 | `VISION_BASE_URL` | | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 API 基础 URL |
 | `VISION_MAX_IMAGE_SIZE_KB` | | `2048` | 图片大小限制（KB），超限自动压缩 |
 | `VISION_TIMEOUT_SECONDS` | | `60` | 调用视觉模型 API 的超时（秒） |
@@ -313,7 +322,7 @@ pytest -v
 {
   "vision": {
     "api_key": "your-api-key",
-    "model": "glm-4v-flash",
+    "model": "glm-4.6v-flash",
     "base_url": "https://open.bigmodel.cn/api/paas/v4",
     "max_image_size_kb": 2048,
     "timeout_seconds": 60
@@ -362,7 +371,7 @@ Skill 目录」两个入口接入本项目。
       "args": ["-m", "deepseek_vision_mcp"],
       "env": {
         "VISION_API_KEY": "your-api-key",
-        "VISION_MODEL": "glm-4v-flash",
+        "VISION_MODEL": "glm-4.6v-flash",
         "VISION_BASE_URL": "https://open.bigmodel.cn/api/paas/v4"
       }
     }
@@ -412,7 +421,7 @@ Codex 同样通过 MCP 注册服务器。在其配置文件（如 `~/.codex/conf
 [mcp_servers.deepseek-vision]
 command = "python"
 args = ["-m", "deepseek_vision_mcp"]
-env = { VISION_API_KEY = "your-api-key", VISION_MODEL = "glm-4v-flash", VISION_BASE_URL = "https://open.bigmodel.cn/api/paas/v4" }
+env = { VISION_API_KEY = "your-api-key", VISION_MODEL = "glm-4.6v-flash", VISION_BASE_URL = "https://open.bigmodel.cn/api/paas/v4" }
 ```
 
 Skill 目录加载方式与 Harness 相同（方式二 / 方式三）。
@@ -540,7 +549,7 @@ A：与 Mac/Linux 只有两处命令差异，其余（`deepseek-vision-mcp`、`p
 上方 [快速开始](#快速开始) 的 Windows 命令操作，效果相同。
 
 **Q：能用免费模型吗？**
-A：可以。智谱 `glm-4v-flash` 与硅基流动部分模型提供免费额度，
+A：可以。智谱 `glm-4.6v-flash`（当前免费视觉模型里效果最好）与硅基流动部分模型提供免费额度，
 只需申请 Key 即可，本项目代码本身无需付费。
 
 ---

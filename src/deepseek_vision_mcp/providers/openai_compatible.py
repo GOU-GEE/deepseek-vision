@@ -3,7 +3,7 @@
 适用于所有提供 ``/chat/completions`` 接口、支持 ``image_url`` 内容块
 的服务商，例如：
 
-- 智谱 AI（GLM-4V）：``https://open.bigmodel.cn/api/paas/v4``
+- 智谱 AI（GLM-4.6V）：``https://open.bigmodel.cn/api/paas/v4``
 - 硅基流动（Qwen2.5-VL）：``https://api.siliconflow.cn/v1``
 - 通义千问 DashScope：``https://dashscope.aliyuncs.com/compatible-mode/v1``
 

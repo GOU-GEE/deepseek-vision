@@ -9,7 +9,7 @@ description: >-
 # Vision Skill — 图片理解
 
 DeepSeek 主模型是纯文本模型，无法直接“看”图片。本 Skill 通过 MCP 工具
-`analyze_image` 把图片交给第三方 OpenAI 兼容视觉模型（如智谱 GLM-4V、
+`analyze_image` 把图片交给第三方 OpenAI 兼容视觉模型（如智谱 GLM-4.6V、
 硅基流动 Qwen2.5-VL、通义千问 qwen-vl-plus），再把识别文本返回给主模型。
 
 ## 触发条件
@@ -72,7 +72,7 @@ DeepSeek 主模型是纯文本模型，无法直接“看”图片。本 Skill �
 调用 analyze_image(image="./screenshot.png", prompt="请识别图片中的错误信息，并说明可能的原因。")
 ```
 
-**工具返回**：`{"success": true, "result": "截图显示 Python 报错：ModuleNotFoundError: No module named 'requests'，发生在 import requests 处。可能原因：未安装 requests 库……", "model": "glm-4v-flash", ...}`
+**工具返回**：`{"success": true, "result": "截图显示 Python 报错：ModuleNotFoundError: No module named 'requests'，发生在 import requests 处。可能原因：未安装 requests 库……", "model": "glm-4.6v-flash", ...}`
 
 **助手**：这张截图里的错误是 `ModuleNotFoundError: No module named 'requests'`，
 发生在 `import requests` 这行。解决方法是执行 `pip install requests` 后重新运行。
