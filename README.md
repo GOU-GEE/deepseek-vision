@@ -33,10 +33,14 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 [我的免费视觉模型 API Key（可选，免费 Key 才填；付费 Key 请删掉这一行）: YOUR_FREE_API_KEY]
 
 1. 克隆仓库到当前目录（已存在则跳过）：git clone https://github.com/GOU-GEE/deepseek-vision.git
-2. 检查 python3 版本是否 >= 3.10；不满足时用 brew install python@3.12（Mac）
-   或提示用户手动安装（Windows）。
-3. 创建虚拟环境并安装依赖：
-   python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
+2. 检查 Python 版本是否 >= 3.10（Mac/Linux 用 python3 --version；Windows 用
+   python --version 或 py -V）。不满足时按平台安装：Mac 用 brew install python@3.12
+   或到 python.org 下载；Windows 用 winget install Python.Python.3.12 或到
+   python.org 下载（安装时勾选 Add python.exe to PATH）；Linux 用系统包管理器。
+3. 创建虚拟环境并安装依赖（按平台选一条）：
+   - Mac/Linux:  python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
+   - Windows cmd: python -m venv .venv && .venv\Scripts\activate && pip install -e ".[dev]"
+   - Windows PowerShell: py -3.12 -m venv .venv && .venv\Scripts\Activate.ps1 && pip install -e ".[dev]"
 4. 配置 API Key：
    - 如果我在上面提供了 Key，把它写入 .env 的 VISION_API_KEY。
      默认视觉模型为智谱 glm-4v-flash（可到 https://open.bigmodel.cn 免费申请；
@@ -51,7 +55,7 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
   "mcp_servers": [
     {
       "name": "deepseek-vision",
-      "command": "<第3步虚拟环境的python绝对路径，如 /path/to/.venv/bin/python>",
+      "command": "<第3步虚拟环境的python绝对路径：Mac/Linux 如 /path/to/.venv/bin/python，Windows 如 C:/path/to/.venv/Scripts/python.exe>",
       "args": ["-m", "deepseek_vision_mcp"],
       "env": {
         "VISION_API_KEY": "<第4步确定的Key；若用户选择自己填 .env 则此项可省略>",
@@ -190,24 +194,45 @@ examples/test_image.jpg 自测 analyze_image 工具，并汇报结果。
 
 ### 2. 安装
 
-要求 **Python 3.10+**。
+要求 **Python 3.10+**。还没装的话，按你的系统选一种方式：
+
+| 系统 | 安装 Python 3.10+ |
+| --- | --- |
+| macOS | `brew install python@3.12`，或从 <https://www.python.org/downloads/macos/> 下载安装包 |
+| Windows | `winget install Python.Python.3.12`，或从 <https://www.python.org/downloads/windows/> 下载安装包（安装时**勾选 "Add python.exe to PATH"**） |
+| Linux | Debian/Ubuntu：`sudo apt install python3.12 python3.12-venv`；其他发行版用各自的包管理器 |
+
+> Windows 提示 `python` 找不到时，试试 `py -3.12`（Python 启动器，装 python.org 版本自带）。
+
+然后克隆并安装（命令按你的系统选）：
 
 ```bash
 git clone https://github.com/GOU-GEE/deepseek-vision.git
-cd deepseek-vision-mcp
+cd deepseek-vision
 
-# 推荐：创建虚拟环境
+# ── 创建虚拟环境并激活 ──────────────────────────────
+# Mac / Linux:
 python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 
-# 以可编辑模式安装（含开发依赖，用于跑测试）
+# Windows (cmd 命令提示符):
+# python -m venv .venv
+# .venv\Scripts\activate
+
+# Windows (PowerShell):
+# py -3.12 -m venv .venv
+# .venv\Scripts\Activate.ps1
+
+# ── 安装（含开发依赖，用于跑测试；三平台命令相同）──
 pip install -e ".[dev]"
 ```
 
 ### 3. 配置
 
 ```bash
-cp .env.example .env
+cp .env.example .env        # Mac / Linux
+# Windows (cmd):      copy .env.example .env
+# Windows (PowerShell): Copy-Item .env.example .env
 ```
 
 编辑 `.env`，填入你的 API Key（至少修改 `VISION_API_KEY`，其他可用默认值）：
@@ -222,6 +247,7 @@ VISION_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 
 ```bash
 cp config.example.json config.json
+# Windows 同样用 copy / Copy-Item
 # 然后编辑 config.json 填入 api_key
 ```
 
@@ -344,8 +370,10 @@ Skill 目录」两个入口接入本项目。
 }
 ```
 
-> 如果你的 `python` 不在 PATH 中，请换成绝对路径（如 `/path/to/.venv/bin/python`）。
-> 建议使用虚拟环境中的 Python，确保安装了本项目的依赖。
+> 如果你的 `python` 不在 PATH 中，请换成虚拟环境中 Python 的绝对路径：
+> Mac/Linux 为 `/path/to/.venv/bin/python`，Windows 为 `C:/path/to/.venv/Scripts/python.exe`
+> （Windows 路径可用正斜杠，避免 JSON 转义问题）。建议使用虚拟环境中的 Python，
+> 确保安装了本项目的依赖。
 
 ### 方式二：加载 Skill 目录
 
@@ -501,6 +529,15 @@ A：`jpg / jpeg / png / webp`，可用 `VISION_ALLOWED_FORMATS` 调整。
 
 **Q：图片会被压缩吗？**
 A：超过大小限制时自动压缩（先降质量，再缩分辨率），不影响识别结果。
+
+**Q：Windows 上怎么运行？**
+A：与 Mac/Linux 只有两处命令差异，其余（`deepseek-vision-mcp`、`pytest` 等）完全一致：
+- **激活虚拟环境**：cmd 用 `.venv\Scripts\activate`，PowerShell 用 `.venv\Scripts\Activate.ps1`；
+- **复制配置文件**：cmd 用 `copy .env.example .env`，PowerShell 用 `Copy-Item .env.example .env`；
+- 注册 MCP 服务器时 `command` 填虚拟环境 Python 绝对路径：
+  `C:/path/to/.venv/Scripts/python.exe`（正斜杠写法，避免 JSON 转义）。
+另外 `scripts/install.sh` 是 bash 脚本，仅适用于 Mac/Linux；Windows 用户请直接按
+上方 [快速开始](#快速开始) 的 Windows 命令操作，效果相同。
 
 **Q：能用免费模型吗？**
 A：可以。智谱 `glm-4v-flash` 与硅基流动部分模型提供免费额度，
