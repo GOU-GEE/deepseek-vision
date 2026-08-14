@@ -1,0 +1,25 @@
+# --- 环境与密钥（切勿提交真实 Key）---
+.env
+config.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- 编辑器 / 系统 ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- 本地工具目录 ---
+.tools/

@@ -1,0 +1,12 @@
+{
+  "vision": {
+    "api_key": "",
+    "model": "glm-4v-flash",
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "max_image_size_kb": 2048,
+    "timeout_seconds": 60,
+    "download_timeout_seconds": 30,
+    "allowed_formats": ["jpg", "jpeg", "png", "webp"],
+    "provider": "openai_compatible"
+  }
+}

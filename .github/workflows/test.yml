@@ -1,0 +1,40 @@
+name: test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package with dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run pytest
+        run: pytest -v
+
+      - name: Verify CLI entry point
+        run: |
+          # 校验配置命令在无 Key 时应给出明确报错（退出码 1）
+          if deepseek-vision-mcp --check; then
+            echo "预期无 Key 时 --check 失败，但命令成功了" >&2
+            exit 1
+          else
+            echo "OK: 无 Key 时 --check 正确报错"
+          fi
