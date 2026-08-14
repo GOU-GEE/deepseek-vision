@@ -42,7 +42,7 @@ class TestOpenAICompatibleProvider:
 
         # 客户端按预期参数构造
         m_openai.assert_called_once_with(
-            api_key="k", base_url="https://x/v4", timeout=60
+            api_key="k", base_url="https://x/v4", timeout=60, max_retries=2
         )
         call_kwargs = fake_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["model"] == "glm-4.6v-flash"
@@ -55,6 +55,98 @@ class TestOpenAICompatibleProvider:
         assert result["text"] == "这是一只猫"
         assert result["model"] == "mock-vl"
         assert result["usage"]["total_tokens"] == 15
+
+    def test_temperature_forwarded(self):
+        """temperature 应透传给 chat.completions.create。"""
+        fake_client = mock.Mock()
+        fake_client.chat.completions.create.return_value = _mock_response()
+        with mock.patch(
+            "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+            return_value=fake_client,
+        ):
+            provider = OpenAICompatibleProvider(
+                "k", "m", "https://x", temperature=0.7
+            )
+            provider.analyze(DATA_URI, "p")
+        assert (
+            fake_client.chat.completions.create.call_args.kwargs["temperature"] == 0.7
+        )
+
+    def test_analyze_multi_builds_multiple_image_blocks(self):
+        """多图：一条 message 里应包含多张 image_url 块。"""
+        fake_client = mock.Mock()
+        fake_client.chat.completions.create.return_value = _mock_response()
+        with mock.patch(
+            "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+            return_value=fake_client,
+        ):
+            provider = OpenAICompatibleProvider("k", "m", "https://x")
+            result = provider.analyze_multi(
+                ["data:image/jpeg;base64,AAA", "data:image/png;base64,BBB"],
+                "对比这两张图",
+            )
+        content = fake_client.chat.completions.create.call_args.kwargs[
+            "messages"
+        ][0]["content"]
+        images = [c for c in content if c["type"] == "image_url"]
+        assert len(images) == 2
+        assert result["text"] == "这是一只猫"
+
+    def test_output_truncated_escalates_max_tokens(self):
+        """finish_reason=length 时应升档重试 max_tokens。"""
+        fake_client = mock.Mock()
+        truncated = _mock_response(text="部分内容")
+        truncated.choices[0].finish_reason = "length"
+        complete = _mock_response(text="完整内容")
+        complete.choices[0].finish_reason = "stop"
+        fake_client.chat.completions.create.side_effect = [truncated, complete]
+        with mock.patch(
+            "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+            return_value=fake_client,
+        ):
+            provider = OpenAICompatibleProvider("k", "m", "https://x")
+            result = provider.analyze(DATA_URI, "p")
+        assert result["text"] == "完整内容"
+        max_tokens_used = [
+            c.kwargs["max_tokens"]
+            for c in fake_client.chat.completions.create.call_args_list
+        ]
+        assert max_tokens_used == [2048, 4096]  # 升档
+
+    def test_reasoning_only_content_diagnosed(self):
+        """只返回 reasoning_content 时应给出明确诊断。"""
+        fake_client = mock.Mock()
+        resp = _mock_response(text="")
+        resp.choices[0].message.reasoning_content = "思考过程……"
+        fake_client.chat.completions.create.return_value = resp
+        with mock.patch(
+            "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+            return_value=fake_client,
+        ):
+            provider = OpenAICompatibleProvider("k", "m", "https://x")
+            with pytest.raises(VisionProviderError, match="reasoning_content"):
+                provider.analyze(DATA_URI, "p")
+
+    def test_status_hint_in_error(self):
+        """401 错误应附带修复指引。"""
+        fake_client = mock.Mock()
+        resp = SimpleNamespace(
+            status_code=401,
+            headers={},
+            text="",
+            url="https://x/chat/completions",
+            request=SimpleNamespace(url="https://x/chat/completions", headers={}),
+        )
+        fake_client.chat.completions.create.side_effect = AuthenticationError(
+            "Incorrect API key", response=resp, body=None
+        )
+        with mock.patch(
+            "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+            return_value=fake_client,
+        ):
+            provider = OpenAICompatibleProvider("bad-key", "m", "https://x")
+            with pytest.raises(VisionProviderError, match="VISION_API_KEY"):
+                provider.analyze(DATA_URI, "p")
 
     def test_analyze_returns_usage(self):
         fake_client = mock.Mock()

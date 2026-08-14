@@ -39,11 +39,11 @@ class FakeProvider:
         self.closed = True
 
 
-def _call_tool(config, image, prompt="请详细描述这张图片的内容"):
+def _call_tool(config, image, prompt=None, task="describe"):
     """直接调用工具函数（FastMCP 装饰后仍保留原函数引用）。"""
     mcp = server_module.create_server(config=config)
     fn = mcp._tool_manager._tools["analyze_image"].fn
-    return fn(image, prompt)
+    return fn(image, prompt, task)
 
 
 def _parse(raw: str) -> dict:
@@ -158,6 +158,190 @@ class TestErrors:
             _call_tool(vision_config, DATA_URI, "请提取图片中的文字")
         assert captured["prompt"] == "请提取图片中的文字"
         assert captured["image"] == DATA_URI
+
+    def test_task_preset_used_when_no_prompt(self, vision_config):
+        """不传 prompt 时，task 预置提示词应生效。"""
+        captured = {}
+
+        class RecordingProvider(FakeProvider):
+            def analyze(self, image_data_uri, prompt):
+                captured["prompt"] = prompt
+                return {"text": "ok", "model": "m", "usage": {}}
+
+        with mock.patch.object(
+            server_module, "build_provider", return_value=RecordingProvider()
+        ):
+            _call_tool(vision_config, DATA_URI, task="ocr")
+        assert "提取这张图片中的全部文字" in captured["prompt"]
+
+    def test_prompt_overrides_task(self, vision_config):
+        """显式 prompt 应优先于 task 预置。"""
+        captured = {}
+
+        class RecordingProvider(FakeProvider):
+            def analyze(self, image_data_uri, prompt):
+                captured["prompt"] = prompt
+                return {"text": "ok", "model": "m", "usage": {}}
+
+        with mock.patch.object(
+            server_module, "build_provider", return_value=RecordingProvider()
+        ):
+            _call_tool(vision_config, DATA_URI, "自定义问题", task="ocr")
+        assert captured["prompt"] == "自定义问题"
+
+    def test_default_task_is_describe(self, vision_config):
+        captured = {}
+
+        class RecordingProvider(FakeProvider):
+            def analyze(self, image_data_uri, prompt):
+                captured["prompt"] = prompt
+                return {"text": "ok", "model": "m", "usage": {}}
+
+        with mock.patch.object(
+            server_module, "build_provider", return_value=RecordingProvider()
+        ):
+            _call_tool(vision_config, DATA_URI)
+        assert captured["prompt"] == "请详细描述这张图片的内容"
+
+
+class TestClipboard:
+    def test_analyze_clipboard_success(self, vision_config, tmp_path):
+        """剪贴板有图时：保存→分析→清理临时文件。"""
+        clip_path = tmp_path / "clip.png"
+        clip_path.write_bytes(b"fake-png")
+        fake = FakeProvider(text="剪贴板图片内容")
+        with mock.patch.object(server_module, "build_provider", return_value=fake), \
+             mock.patch.object(
+                 server_module, "save_clipboard_image", return_value=str(clip_path)
+             ) as m_save, \
+             mock.patch.object(server_module, "load_image_as_base64",
+                               return_value=(DATA_URI, "image/png")) as m_load, \
+             mock.patch.object(server_module.os, "unlink") as m_unlink:
+            mcp = server_module.create_server(config=vision_config)
+            fn = mcp._tool_manager._tools["analyze_clipboard"].fn
+            raw = fn()
+        out = _parse(raw)
+        assert out["success"] is True
+        assert out["result"] == "剪贴板图片内容"
+        m_save.assert_called_once()
+        m_load.assert_called_once()
+        m_unlink.assert_called_once_with(str(clip_path))
+
+    def test_analyze_clipboard_no_image(self, vision_config):
+        """剪贴板无图时应返回 CLIPBOARD_ERROR 且不调用分析。"""
+        with mock.patch.object(
+            server_module,
+            "save_clipboard_image",
+            side_effect=server_module.ClipboardError("剪贴板中没有图片。"),
+        ), mock.patch.object(server_module, "build_provider") as m_provider:
+            mcp = server_module.create_server(config=vision_config)
+            fn = mcp._tool_manager._tools["analyze_clipboard"].fn
+            raw = fn()
+        out = _parse(raw)
+        assert out["success"] is False
+        assert out["error"] == "CLIPBOARD_ERROR"
+        m_provider.assert_not_called()
+
+    def test_missing_key_error_has_guidance(self, monkeypatch):
+        """未配置 Key 时（惰性加载触发校验），返回 CONFIG_ERROR + 申请指引。"""
+        # 清空环境中可能的 VISION_* 变量，模拟全新用户
+        for k in list(__import__("os").environ):
+            if k.startswith("VISION_"):
+                monkeypatch.delenv(k)
+        mcp = server_module.create_server(config=None)
+        fn = mcp._tool_manager._tools["analyze_image"].fn
+        raw = fn(DATA_URI)
+        out = _parse(raw)
+        assert out["success"] is False
+        assert out["error"] == "CONFIG_ERROR"
+        assert "open.bigmodel.cn" in out["result"]      # 智谱申请入口
+        assert "siliconflow.cn" in out["result"]        # 硅基流动申请入口
+        assert "dashscope" in out["result"]             # 通义千问申请入口
+
+
+class TestCompareImages:
+    def _call(self, config, images, prompt=None):
+        mcp = server_module.create_server(config=config)
+        fn = mcp._tool_manager._tools["compare_images"].fn
+        return fn(images, prompt)
+
+    def test_compare_success(self, vision_config):
+        """多图对比：应逐张加载并调用 analyze_multi。"""
+        captured = {}
+
+        class RecordingProvider(FakeProvider):
+            def analyze_multi(self, uris, prompt):
+                captured["uris"] = uris
+                captured["prompt"] = prompt
+                return {"text": "对比结果", "model": "m", "usage": {}}
+
+        with mock.patch.object(
+            server_module, "build_provider", return_value=RecordingProvider()
+        ), mock.patch.object(
+            server_module, "load_image_as_base64",
+            side_effect=lambda img, **kw: (f"data:image/jpeg;base64,{img}", "image/jpeg"),
+        ):
+            raw = self._call(vision_config, ["a.jpg", "b.jpg"])
+        out = _parse(raw)
+        assert out["success"] is True
+        assert out["result"] == "对比结果"
+        assert len(captured["uris"]) == 2
+        assert "2 张图片" in captured["prompt"]  # 自动注入对比指令
+
+    def test_compare_custom_prompt(self, vision_config):
+        captured = {}
+
+        class RecordingProvider(FakeProvider):
+            def analyze_multi(self, uris, prompt):
+                captured["prompt"] = prompt
+                return {"text": "ok", "model": "m", "usage": {}}
+
+        with mock.patch.object(
+            server_module, "build_provider", return_value=RecordingProvider()
+        ), mock.patch.object(
+            server_module, "load_image_as_base64",
+            return_value=(DATA_URI, "image/jpeg"),
+        ):
+            self._call(vision_config, ["a.jpg", "b.jpg"], "这两张图哪个更好？")
+        assert captured["prompt"] == "这两张图哪个更好？"
+
+    def test_compare_requires_2_to_4(self, vision_config):
+        raw = self._call(vision_config, ["only_one.jpg"])
+        out = _parse(raw)
+        assert out["success"] is False
+        assert out["error"] == "INVALID_ARGUMENT"
+
+    def test_compare_load_failure(self, vision_config):
+        with mock.patch.object(
+            server_module,
+            "load_image_as_base64",
+            side_effect=ImageLoadError("图片文件不存在：x.jpg"),
+        ):
+            raw = self._call(vision_config, ["x.jpg", "y.jpg"])
+        out = _parse(raw)
+        assert out["success"] is False
+        assert out["error"] == "IMAGE_LOAD_FAILED"
+
+
+class TestVisionStatus:
+    def test_status_configured(self, vision_config):
+        mcp = server_module.create_server(config=vision_config)
+        fn = mcp._tool_manager._tools["vision_status"].fn
+        raw = json.loads(fn())
+        assert raw["configured"] is True
+        assert raw["model"] == "glm-4.6v-flash"
+        assert raw["api_key_masked"].startswith("test")
+
+    def test_status_not_configured(self, monkeypatch):
+        for k in list(__import__("os").environ):
+            if k.startswith("VISION_"):
+                monkeypatch.delenv(k)
+        mcp = server_module.create_server(config=None)
+        fn = mcp._tool_manager._tools["vision_status"].fn
+        raw = json.loads(fn())
+        assert raw["success"] is False
+        assert raw["error"] == "CONFIG_ERROR"
+        assert "VISION_API_KEY" in raw["result"]
 
 
 class TestServerInstance:

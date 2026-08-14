@@ -20,6 +20,7 @@ class TestDefaults:
         assert cfg.max_image_size_kb == 2048
         assert cfg.timeout_seconds == 60
         assert cfg.download_timeout_seconds == 30
+        assert cfg.temperature == 0.3
         assert cfg.allowed_formats == ["jpg", "jpeg", "png", "webp"]
         assert cfg.provider == "openai_compatible"
 

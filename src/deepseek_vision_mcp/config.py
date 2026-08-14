@@ -37,10 +37,14 @@ DEFAULTS: Dict[str, Any] = {
     "VISION_MAX_IMAGE_SIZE_KB": 2048,
     # 请求超时时间（秒）
     "VISION_TIMEOUT_SECONDS": 60,
+    # 视觉模型采样温度（0-2；0.3 更适合 OCR/报错诊断等确定性任务）
+    "VISION_TEMPERATURE": 0.3,
     # 允许的图片格式
     "VISION_ALLOWED_FORMATS": "jpg,jpeg,png,webp",
     # 从 URL 下载图片的超时（秒）
     "VISION_DOWNLOAD_TIMEOUT_SECONDS": 30,
+    # 是否允许下载内网/保留地址的 URL（默认 false，SSRF 防护；自建内网服务时设为 true）
+    "VISION_ALLOW_PRIVATE_IMAGE_URLS": "false",
     # 是否从 config.json 加载（默认开启）
     "VISION_USE_CONFIG_FILE": "true",
     # config.json 路径（默认为项目根目录下的 config.json）
@@ -70,8 +74,10 @@ class VisionConfig:
     base_url: str
     max_image_size_kb: int
     timeout_seconds: int
+    temperature: float
     allowed_formats: list[str]
     download_timeout_seconds: int
+    allow_private_urls: bool
     use_config_file: bool
     config_file: Path
     provider: str
@@ -93,6 +99,8 @@ class VisionConfig:
             raise ValueError("VISION_MAX_IMAGE_SIZE_KB 必须为正整数。")
         if self.timeout_seconds <= 0:
             raise ValueError("VISION_TIMEOUT_SECONDS 必须为正整数。")
+        if not (0.0 <= self.temperature <= 2.0):
+            raise ValueError("VISION_TEMPERATURE 必须在 0 到 2 之间。")
         if self.download_timeout_seconds <= 0:
             raise ValueError("VISION_DOWNLOAD_TIMEOUT_SECONDS 必须为正整数。")
 
@@ -161,12 +169,14 @@ def load_config(
         base_url=str(merged["VISION_BASE_URL"]).rstrip("/"),
         max_image_size_kb=int(merged["VISION_MAX_IMAGE_SIZE_KB"]),
         timeout_seconds=int(merged["VISION_TIMEOUT_SECONDS"]),
+        temperature=float(merged["VISION_TEMPERATURE"]),
         allowed_formats=[
             f.strip().lower()
             for f in str(merged["VISION_ALLOWED_FORMATS"]).split(",")
             if f.strip()
         ],
         download_timeout_seconds=int(merged["VISION_DOWNLOAD_TIMEOUT_SECONDS"]),
+        allow_private_urls=_to_bool(merged["VISION_ALLOW_PRIVATE_IMAGE_URLS"]),
         use_config_file=use_config_file,
         config_file=config_path,
         provider=str(merged["VISION_PROVIDER"]).strip().lower(),

@@ -1,0 +1,8 @@
+# Codex 配置示例：注册 deepseek-vision MCP 服务器
+# 放置位置：~/.codex/config.toml（或项目 .codex/config.toml）
+# command 请替换为你的虚拟环境中 Python 的绝对路径
+
+[mcp_servers.deepseek-vision]
+command = "/absolute/path/to/deepseek-vision/.venv/bin/python"
+args = ["-m", "deepseek_vision_mcp"]
+env = { VISION_API_KEY = "your-api-key", VISION_MODEL = "glm-4.6v-flash", VISION_BASE_URL = "https://open.bigmodel.cn/api/paas/v4" }

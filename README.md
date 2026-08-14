@@ -90,7 +90,12 @@ Key 已给则填入 VISION_API_KEY，未给则省略让它自动读 .env）→ �
 8. 验证：用 examples/test_image.jpg 实际调用一次 analyze_image 工具，
    确认能返回图片内容。若注册后当前会话还无法调用该工具，提示用户重启会话。
 
-完成后向用户汇报每一步的结果。
+执行约束：
+- 每一步失败即停：展示完整错误信息与修复建议，不要跳过或假装成功。
+- 修改任何配置文件都用 merge 合并，不要整文件覆盖；写完后校验 JSON 合法性。
+- 已有仓库/已装的依赖/已配好的环境一律跳过，不要重复执行。
+- 不要把 API Key 写进任何提交到仓库的文件（如 config.json 示例），只写本地 .env 或客户端配置。
+- 完成后向用户汇报：安装路径、修改过的文件、如何验证（复制一张图片问一句即可）。
 ```
 
 > 如果你更喜欢手动安装，请按下方 [快速开始](#快速开始) 操作，效果完全一样。
@@ -189,6 +194,29 @@ Key 已给则填入 VISION_API_KEY，未给则省略让它自动读 .env）→ �
 > 继承 `providers/base.py` 中的 `BaseVisionProvider`，在
 > `providers/__init__.py` 的 `build_provider()` 中注册，并通过
 > `VISION_PROVIDER` 环境变量切换即可。当前版本内置 `openai_compatible`。
+
+---
+
+## 工具一览
+
+MCP Server 提供 4 个工具：
+
+| 工具 | 输入 | 用途 |
+| --- | --- | --- |
+| `analyze_image` | `image`（路径/URL/base64）+ `prompt`? + `task`? | 分析单张图片；`task` 提供 7 种预置任务（描述/OCR/UI/报错/图表/代码等），`prompt` 优先级更高 |
+| `analyze_clipboard` | `prompt`? + `task`? | 读取系统剪贴板中的图片并分析（Win/macOS/Linux）——用户「截图即问」 |
+| `compare_images` | `images`（2-4 张）+ `prompt`? | 多图对比分析，自动注入「共 N 张图，对比异同」指令 |
+| `vision_status` | 无 | 返回配置与健康状态（版本/模型/Key 是否配置），用于诊断 |
+
+`task` 预置任务：`describe`（默认，通用描述）、`ocr`（提取文字）、
+`describe_ui`（UI 截图）、`diagnose_error`（报错诊断）、`understand_diagram`
+（流程图/架构图）、`analyze_chart`（数据图表）、`code_from_screenshot`（代码截图）。
+
+所有工具统一返回 JSON：`{"success": true/false, "result": "...", "model": "...",
+"usage": {...}, "error": "..."}`。失败时 `error` 字段给出错误码
+（`CONFIG_ERROR` / `IMAGE_LOAD_FAILED` / `IMAGE_TOO_LARGE` / `VISION_API_ERROR` /
+`CLIPBOARD_ERROR` / `INVALID_ARGUMENT` / `INTERNAL_ERROR`），`result` 附带可执行的
+修复指引（如 401 → 检查 Key、429 → 稍后重试），主模型可直接转述给用户。
 
 ---
 
@@ -310,7 +338,9 @@ pytest -v
 | `VISION_BASE_URL` | | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 API 基础 URL |
 | `VISION_MAX_IMAGE_SIZE_KB` | | `2048` | 图片大小限制（KB），超限自动压缩 |
 | `VISION_TIMEOUT_SECONDS` | | `60` | 调用视觉模型 API 的超时（秒） |
+| `VISION_TEMPERATURE` | | `0.3` | 采样温度（0-2），0.3 更适合 OCR/报错诊断 |
 | `VISION_DOWNLOAD_TIMEOUT_SECONDS` | | `30` | 下载 URL 图片的超时（秒） |
+| `VISION_ALLOW_PRIVATE_IMAGE_URLS` | | `false` | 是否允许下载内网 URL（SSRF 防护，自建内网服务时设为 `true`） |
 | `VISION_ALLOWED_FORMATS` | | `jpg,jpeg,png,webp` | 允许的图片格式 |
 | `VISION_USE_CONFIG_FILE` | | `true` | 是否读取 `config.json` |
 | `VISION_CONFIG_FILE` | | `./config.json` | `config.json` 的路径 |
@@ -479,25 +509,31 @@ deepseek-vision-mcp/
 ├── src/
 │   └── deepseek_vision_mcp/
 │       ├── __init__.py
-│       ├── server.py           # MCP Server 入口，analyze_image 工具
+│       ├── server.py           # MCP Server 入口：analyze_image / analyze_clipboard / compare_images / vision_status
 │       ├── config.py           # 配置加载（.env / 环境变量 / config.json）
-│       ├── image_utils.py      # 图片加载、编码、校验、压缩
+│       ├── image_utils.py      # 图片加载、编码、校验、压缩、SSRF 防护
+│       ├── clipboard.py        # 跨平台剪贴板图片读取（Win/macOS/Linux）
+│       ├── prompts.py          # 预置任务提示词（OCR/UI/报错/图表等 7 种）
 │       ├── providers/
 │       │   ├── __init__.py     # build_provider 分发
 │       │   ├── base.py         # 视觉模型抽象基类（扩展点）
-│       │   └── openai_compatible.py
-│       └── main.py             # 命令行入口
+│       │   └── openai_compatible.py  # OpenAI 兼容实现（重试/升档/错误指引）
+│       ├── main.py             # 命令行入口（--check / --check-clipboard / --test-image）
+│       └── __main__.py
 ├── skills/
 │   └── vision/
 │       └── SKILL.md            # vision Skill 定义
 ├── examples/
 │   ├── test_image.jpg          # 测试图片
-│   └── sample_chat.md          # 示例对话
+│   ├── sample_chat.md          # 示例对话
+│   ├── opencode.json           # OpenCode 集成配置示例
+│   ├── claude_code_settings.json  # Claude Code 集成配置示例
+│   └── codex_config.toml       # Codex 集成配置示例
 ├── scripts/
 │   ├── install.sh
 │   └── test_mcp.sh
-├── tests/                      # pytest 测试
-└── .github/workflows/test.yml  # CI
+├── tests/                      # pytest 测试（77 个用例）
+└── .github/workflows/test.yml  # CI（含真实 MCP stdio 握手冒烟）
 ```
 
 ---
@@ -536,6 +572,25 @@ A：图片压缩后仍超过 `VISION_MAX_IMAGE_SIZE_KB`。换更小的图片，�
 A：`jpg / jpeg / png / webp`，可用 `VISION_ALLOWED_FORMATS` 调整。
 其他格式会先尝试用 Pillow 识别。
 
+**Q：怎么分析剪贴板里的截图？**
+A：直接问主模型「看看我刚复制的截图」即可——它命中 Skill 后会调用
+`analyze_clipboard` 工具读取系统剪贴板。也可先手动验证：
+`deepseek-vision-mcp --check-clipboard`（无需 API Key）。
+
+**Q：能对比多张图片吗？**
+A：可以。让主模型调用 `compare_images` 工具，传入 2-4 张图片的
+路径/URL（如「对比 design_v1.png 和 design_v2.png 有什么不同」）。
+
+**Q：为什么下载内网图片 URL 会报错？**
+A：出于安全考虑（SSRF 防护），默认拒绝解析到内网/保留地址的 URL，
+防止恶意链接探测内网服务或云元数据。自建内网图片服务时，可设置
+`VISION_ALLOW_PRIVATE_IMAGE_URLS=true` 显式放行。
+
+**Q：输出被截断或返回空内容怎么办？**
+A：Server 已内置处理：输出被 `max_tokens` 截断会自动升档重试；
+若模型只返回思考内容（reasoning_content），会提示更换非推理模型。
+仍失败时可按 `VISION_API_ERROR` 的 result 提示排查。
+
 **Q：图片会被压缩吗？**
 A：超过大小限制时自动压缩（先降质量，再缩分辨率），不影响识别结果。
 
@@ -557,9 +612,13 @@ A：可以。智谱 `glm-4.6v-flash`（当前免费视觉模型里效果最好�
 ## 隐私说明
 
 - 使用本项目时，**图片内容会被发送到你所配置的第三方视觉模型 API**
-  （智谱 AI / 硅基流动 / 通义千问 / OpenAI 等），请勿传入敏感或涉密图片。
+  （智谱 AI / 硅基流动 / 通义千问 / OpenAI 等），请勿传入敏感或涉密图片；
+  剪贴板截图可能包含 token/凭据，分析后临时文件会被立即删除。
 - API Key 只保存在你的本机（`.env` / `config.json` / 环境变量），
   项目代码**不内置、不收集、不上传**任何 Key。
+- **安全防护**：URL 图片下载默认启用 SSRF 防护（拒绝内网/保留地址、
+  每跳重定向重新校验、限制重定向次数与下载大小），防止恶意链接探测
+  内网服务或云元数据。
 - 请求内容（图片 + prompt）由对应服务商的隐私政策约束，
   建议查阅各服务商的隐私条款。
 - 若对隐私有严格要求，可选择自建 OpenAI 兼容的视觉推理服务（如 vLLM

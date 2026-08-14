@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "deepseek-vision": {
+      "command": "/absolute/path/to/deepseek-vision/.venv/bin/python",
+      "args": ["-m", "deepseek_vision_mcp"],
+      "env": {
+        "VISION_API_KEY": "your-api-key",
+        "VISION_MODEL": "glm-4.6v-flash",
+        "VISION_BASE_URL": "https://open.bigmodel.cn/api/paas/v4"
+      }
+    }
+  }
+}

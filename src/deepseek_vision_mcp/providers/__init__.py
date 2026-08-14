@@ -24,6 +24,7 @@ def build_provider(config) -> BaseVisionProvider:
             model=config.model,
             base_url=config.base_url,
             timeout_seconds=config.timeout_seconds,
+            temperature=getattr(config, "temperature", 0.3),
         )
     raise VisionProviderError(
         f"未知的提供商类型：{name!r}。当前支持：openai_compatible。"

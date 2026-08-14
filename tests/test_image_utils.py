@@ -20,6 +20,14 @@ def _data_uri_body(data_uri: str) -> bytes:
     return base64.b64decode(data_uri.split(",", 1)[1])
 
 
+def _mock_public_dns(hostname="example.com", ip="93.184.216.34"):
+    """mock DNS 解析为公网 IP（SSRF 校验需要）。"""
+    return mock.patch(
+        "deepseek_vision_mcp.image_utils.socket.getaddrinfo",
+        return_value=[(2, 1, 6, "", (ip, 0))],
+    )
+
+
 class TestLocalPath:
     def test_jpg_path_success(self, jpg_path):
         data_uri, mime = load_image_as_base64(jpg_path)
@@ -61,8 +69,10 @@ class TestUrl:
             headers={"Content-Type": "image/jpeg"},
             content=jpg_bytes,
             raise_for_status=lambda: None,
+            status_code=200,
+            close=lambda: None,
         )
-        with mock.patch(
+        with _mock_public_dns(), mock.patch(
             "deepseek_vision_mcp.image_utils.requests.get", return_value=resp
         ) as m_get:
             data_uri, mime = load_image_as_base64("https://example.com/a.jpg")
@@ -75,8 +85,10 @@ class TestUrl:
             headers={"Content-Type": "application/octet-stream"},
             content=png_bytes,
             raise_for_status=lambda: None,
+            status_code=200,
+            close=lambda: None,
         )
-        with mock.patch(
+        with _mock_public_dns(), mock.patch(
             "deepseek_vision_mcp.image_utils.requests.get", return_value=resp
         ):
             _, mime = load_image_as_base64("https://example.com/photo?id=1")
@@ -88,8 +100,11 @@ class TestUrl:
         def boom():
             raise rq.exceptions.HTTPError("403 Forbidden")
 
-        resp = SimpleNamespace(headers={}, content=b"", raise_for_status=boom)
-        with mock.patch(
+        resp = SimpleNamespace(
+            headers={}, content=b"", raise_for_status=boom,
+            status_code=200, close=lambda: None,
+        )
+        with _mock_public_dns(), mock.patch(
             "deepseek_vision_mcp.image_utils.requests.get", return_value=resp
         ):
             with pytest.raises(ImageLoadError, match="下载图片失败"):
@@ -101,12 +116,109 @@ class TestUrl:
 
             raise rq.exceptions.Timeout()
 
-        resp = SimpleNamespace(headers={}, content=b"", raise_for_status=boom)
-        with mock.patch(
+        resp = SimpleNamespace(
+            headers={}, content=b"", raise_for_status=boom,
+            status_code=200, close=lambda: None,
+        )
+        with _mock_public_dns(), mock.patch(
             "deepseek_vision_mcp.image_utils.requests.get", return_value=resp
         ):
             with pytest.raises(ImageLoadError, match="超时"):
                 load_image_as_base64("https://example.com/slow.jpg", download_timeout=3)
+
+
+class TestSSRF:
+    """URL 下载的安全防护：内网/保留地址拒绝、重定向限制。"""
+
+    def test_private_ip_rejected(self):
+        """解析到内网 IP（如 127.0.0.1 / 10.0.0.1）应被拒绝。"""
+        for private_ip in ("127.0.0.1", "10.0.0.1", "192.168.1.1", "169.254.169.254"):
+            with _mock_public_dns(ip=private_ip), mock.patch(
+                "deepseek_vision_mcp.image_utils.requests.get"
+            ) as m_get:
+                with pytest.raises(ImageLoadError, match="拒绝访问"):
+                    load_image_as_base64("https://example.com/a.jpg")
+            m_get.assert_not_called()
+
+    def test_mixed_ips_rejected(self):
+        """同时解析出公网与内网 IP（DNS rebinding 场景）应被拒绝。"""
+        with mock.patch(
+            "deepseek_vision_mcp.image_utils.socket.getaddrinfo",
+            return_value=[
+                (2, 1, 6, "", ("93.184.216.34", 0)),
+                (2, 1, 6, "", ("10.0.0.5", 0)),
+            ],
+        ), mock.patch("deepseek_vision_mcp.image_utils.requests.get") as m_get:
+            with pytest.raises(ImageLoadError, match="拒绝访问"):
+                load_image_as_base64("https://example.com/a.jpg")
+        m_get.assert_not_called()
+
+    def test_localhost_hostname_rejected(self):
+        with mock.patch("deepseek_vision_mcp.image_utils.requests.get") as m_get:
+            with pytest.raises(ImageLoadError, match="拒绝访问"):
+                load_image_as_base64("http://localhost:8080/a.jpg")
+        m_get.assert_not_called()
+
+    def test_allow_private_flag_bypasses(self, jpg_bytes):
+        """显式允许内网地址时可下载。"""
+        resp = SimpleNamespace(
+            headers={"Content-Type": "image/jpeg"},
+            content=jpg_bytes,
+            raise_for_status=lambda: None,
+            status_code=200,
+            close=lambda: None,
+        )
+        with _mock_public_dns(ip="10.0.0.5"), mock.patch(
+            "deepseek_vision_mcp.image_utils.requests.get", return_value=resp
+        ):
+            data_uri, mime = load_image_as_base64(
+                "https://example.com/a.jpg", allow_private=True
+            )
+        assert mime == "image/jpeg"
+
+    def test_redirect_each_hop_revalidated(self, jpg_bytes):
+        """重定向的每一跳都要重新做 SSRF 校验。"""
+        resp_ok = SimpleNamespace(
+            headers={"Content-Type": "image/jpeg"},
+            content=jpg_bytes,
+            raise_for_status=lambda: None,
+            status_code=200,
+            close=lambda: None,
+        )
+
+        def fake_get(url, **kwargs):
+            if "first" in url:
+                return SimpleNamespace(
+                    headers={"Location": "https://example.com/second.jpg"},
+                    content=b"",
+                    raise_for_status=lambda: None,
+                    status_code=302,
+                    close=lambda: None,
+                )
+            return resp_ok
+
+        with _mock_public_dns(), mock.patch(
+            "deepseek_vision_mcp.image_utils.requests.get", side_effect=fake_get
+        ) as m_get:
+            data_uri, mime = load_image_as_base64("https://example.com/first.jpg")
+        assert mime == "image/jpeg"
+        assert m_get.call_count == 2  # 第一跳 302 + 第二跳成功
+
+    def test_redirect_to_private_rejected(self, jpg_bytes):
+        """重定向目标解析到内网 IP 应被拒绝。"""
+        redirect_resp = SimpleNamespace(
+            headers={"Location": "http://169.254.169.254/latest/meta-data/"},
+            content=b"",
+            raise_for_status=lambda: None,
+            status_code=302,
+            close=lambda: None,
+        )
+        # 第一跳 example.com 公网；第二跳目标主机名是 IP 字面量 → 直接命中私网校验
+        with _mock_public_dns(), mock.patch(
+            "deepseek_vision_mcp.image_utils.requests.get", return_value=redirect_resp
+        ):
+            with pytest.raises(ImageLoadError, match="拒绝访问"):
+                load_image_as_base64("https://example.com/redir")
 
 
 class TestBase64:

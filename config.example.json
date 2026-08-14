@@ -5,7 +5,9 @@
     "base_url": "https://open.bigmodel.cn/api/paas/v4",
     "max_image_size_kb": 2048,
     "timeout_seconds": 60,
+    "temperature": 0.3,
     "download_timeout_seconds": 30,
+    "allow_private_urls": false,
     "allowed_formats": ["jpg", "jpeg", "png", "webp"],
     "provider": "openai_compatible"
   }

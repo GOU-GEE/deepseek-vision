@@ -29,6 +29,47 @@ jobs:
       - name: Run pytest
         run: pytest -v
 
+      - name: Real MCP stdio handshake smoke test
+        run: |
+          python - <<'EOF'
+          """真实 stdio 冒烟：initialize → list_tools → 调用工具（无需真实 Key）。"""
+          import asyncio
+          import json
+          import os
+
+          from mcp import ClientSession, StdioServerParameters
+          from mcp.client.stdio import stdio_client
+
+          async def main():
+              params = StdioServerParameters(
+                  command="python",
+                  args=["-m", "deepseek_vision_mcp"],
+                  env={**os.environ, "VISION_API_KEY": "ci-fake-key"},
+              )
+              async with stdio_client(params) as (read, write):
+                  async with ClientSession(read, write) as session:
+                      await session.initialize()
+                      tools = await session.list_tools()
+                      names = sorted(t.name for t in tools.tools)
+                      print("registered tools:", names)
+                      for expected in ("analyze_image", "analyze_clipboard",
+                                       "compare_images", "vision_status"):
+                          assert expected in names, f"工具缺失: {expected}"
+                      # 配置类工具无需真实 Key
+                      res = await session.call_tool("vision_status", {})
+                      payload = json.loads(res.content[0].text)
+                      assert payload["configured"] is True
+                      # 无效图片应返回结构化错误
+                      res2 = await session.call_tool(
+                          "analyze_image", {"image": "examples/not_exist.png"}
+                      )
+                      err = json.loads(res2.content[0].text)
+                      assert err["error"] == "IMAGE_LOAD_FAILED"
+              print("MCP stdio 握手冒烟测试通过")
+
+          asyncio.run(main())
+          EOF
+
       - name: Verify CLI entry point
         run: |
           # 校验配置命令在无 Key 时应给出明确报错（退出码 1）

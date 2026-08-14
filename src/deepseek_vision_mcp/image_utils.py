@@ -13,11 +13,13 @@ from __future__ import annotations
 
 import base64
 import io
+import ipaddress
 import mimetypes
 import re
+import socket
 from pathlib import Path
 from typing import Tuple
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from PIL import Image, ImageOps
@@ -91,21 +93,130 @@ def guess_mime_from_bytes(raw: bytes) -> str:
     return ""
 
 
-def _download_from_url(url: str, timeout: int) -> bytes:
-    """下载 URL 图片，带超时与错误处理。"""
-    try:
-        resp = requests.get(url, timeout=timeout, stream=True)
-        resp.raise_for_status()
-    except requests.exceptions.Timeout as exc:
-        raise ImageLoadError(f"下载图片超时（{timeout}s）：{url}") from exc
-    except requests.exceptions.RequestException as exc:
-        raise ImageLoadError(f"下载图片失败：{url}（{exc}）") from exc
+# ---------------------------------------------------------------------------
+# SSRF 防护（借鉴 image-vision-mcp / staticdeng）：
+# 下载 URL 前校验解析出的 IP，拒绝私网/回环/链路本地等内网地址，
+# 防止恶意 URL 探测内网服务或云元数据（169.254.169.254 等）。
+# ---------------------------------------------------------------------------
+# 始终拒绝的主机名（含常见云元数据端点）
+_BLOCKED_HOSTNAMES = {
+    "localhost",
+    "metadata",
+    "metadata.google.internal",
+    "metadata.google",
+    "instance-data",
+    "instance-data.ec2.internal",
+}
 
-    content_type = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
-    raw = resp.content
-    if not raw:
-        raise ImageLoadError(f"下载到的图片内容为空：{url}")
-    return raw
+# 单次下载最大字节数（防御性上限，压缩逻辑在读取后处理）
+_MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
+# 重定向最多跟随次数（每跳都重新做 SSRF 校验）
+_MAX_REDIRECTS = 5
+
+
+def _is_blocked_ip(ip_str: str) -> bool:
+    """判断 IP 是否属于内网/保留/元数据地址。"""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True  # 无法解析的 IP 一律拒绝
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def _assert_public_host(hostname: str, allow_private: bool = False) -> None:
+    """校验主机名解析出的所有 IP 均为公网地址；含内网地址则拒绝。
+
+    只信任「全部 IP 都是公网」的主机，可防 DNS rebinding
+    （首次解析公网、重试解析内网绕过校验）。
+    """
+    if allow_private:
+        return
+    host = hostname.strip().lower().rstrip(".")
+    if host in _BLOCKED_HOSTNAMES or host.endswith(".local"):
+        raise ImageLoadError(f"出于安全考虑，拒绝访问内网/保留地址：{hostname}")
+    # 兼容 IPv6 字面量 [::1]
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    # 主机名本身是 IP 字面量（如 http://169.254.169.254/）→ 直接校验，不走 DNS
+    try:
+        literal_ip = ipaddress.ip_address(host)
+    except ValueError:
+        literal_ip = None
+    if literal_ip is not None:
+        if _is_blocked_ip(str(literal_ip)):
+            raise ImageLoadError(
+                f"出于安全考虑，拒绝访问内网/保留地址（{hostname}）。"
+            )
+        return
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as exc:
+        raise ImageLoadError(f"无法解析图片 URL 的主机名：{hostname}") from exc
+    if not infos:
+        raise ImageLoadError(f"无法解析图片 URL 的主机名：{hostname}")
+    ips = {info[4][0] for info in infos}
+    blocked = [ip for ip in ips if _is_blocked_ip(ip)]
+    if blocked:
+        raise ImageLoadError(
+            f"出于安全考虑，拒绝访问内网/保留地址（{hostname} 解析到 {', '.join(blocked)}）。"
+        )
+
+
+def _download_from_url(url: str, timeout: int, allow_private: bool = False) -> bytes:
+    """下载 URL 图片，带超时、SSRF 防护与重定向限制。"""
+    current = url
+    for _ in range(_MAX_REDIRECTS + 1):
+        parsed = urlparse(current)
+        if parsed.scheme not in ("http", "https"):
+            raise ImageLoadError(f"不支持的 URL 协议：{parsed.scheme}")
+        _assert_public_host(parsed.hostname or "", allow_private)
+
+        try:
+            resp = requests.get(
+                current, timeout=timeout, stream=True, allow_redirects=False
+            )
+        except requests.exceptions.Timeout as exc:
+            raise ImageLoadError(f"下载图片超时（{timeout}s）：{url}") from exc
+        except requests.exceptions.RequestException as exc:
+            raise ImageLoadError(f"下载图片失败：{url}（{exc}）") from exc
+
+        # 手动跟随重定向（每跳重新做 SSRF 校验）
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location")
+            resp.close()
+            if not location:
+                raise ImageLoadError(f"重定向响应缺少 Location：{url}")
+            current = urljoin(current, location)
+            continue
+
+        try:
+            resp.raise_for_status()
+        except requests.exceptions.Timeout as exc:
+            raise ImageLoadError(f"下载图片超时（{timeout}s）：{url}") from exc
+        except requests.exceptions.RequestException as exc:
+            raise ImageLoadError(f"下载图片失败：{url}（{exc}）") from exc
+
+        raw = resp.content
+        resp.close()
+        if not raw:
+            raise ImageLoadError(f"下载到的图片内容为空：{url}")
+        if len(raw) > _MAX_DOWNLOAD_BYTES:
+            raise ImageLoadError(
+                f"图片超过下载上限（{_MAX_DOWNLOAD_BYTES // 1024 // 1024} MB）：{url}"
+            )
+        return raw
+    raise ImageLoadError(f"图片 URL 重定向次数过多（>{_MAX_REDIRECTS}）：{url}")
+
+
+# 本地文件读取前的硬性大小上限（防超大文件整读进内存；之后压缩会进一步处理）
+_MAX_LOCAL_READ_BYTES = 50 * 1024 * 1024
 
 
 def _read_local_file(path: str) -> bytes:
@@ -115,12 +226,22 @@ def _read_local_file(path: str) -> bytes:
     if not p.is_file():
         raise ImageLoadError(f"路径不是文件：{path}")
     try:
+        size = p.stat().st_size
+    except OSError as exc:
+        raise ImageLoadError(f"读取图片文件信息失败：{path}（{exc}）") from exc
+    if size > _MAX_LOCAL_READ_BYTES:
+        raise ImageLoadError(
+            f"图片文件过大（{size / 1024 / 1024:.0f} MB，上限 {_MAX_LOCAL_READ_BYTES // 1024 // 1024} MB）：{path}"
+        )
+    try:
         return p.read_bytes()
     except OSError as exc:
         raise ImageLoadError(f"读取图片文件失败：{path}（{exc}）") from exc
 
 
-def _load_raw(image: str, download_timeout: int) -> Tuple[bytes, str, str]:
+def _load_raw(
+    image: str, download_timeout: int, allow_private: bool = False
+) -> Tuple[bytes, str, str]:
     """把输入归一化为 (原始字节, MIME, 来源描述)。
 
     返回的 MIME 为空时表示未知，需要调用方探测。
@@ -142,7 +263,7 @@ def _load_raw(image: str, download_timeout: int) -> Tuple[bytes, str, str]:
 
     # 2) URL
     if _looks_like_url(value):
-        raw = _download_from_url(value, download_timeout)
+        raw = _download_from_url(value, download_timeout, allow_private)
         mime = guess_mime_from_bytes(raw)
         if not mime:
             # 回退：根据 URL 后缀猜测
@@ -272,6 +393,7 @@ def load_image_as_base64(
     download_timeout: int = 30,
     allowed_formats: list[str] | None = None,
     allow_compress: bool = True,
+    allow_private: bool = False,
 ) -> Tuple[str, str]:
     """加载任意形式的图片输入，返回 (data URI, MIME)。
 
@@ -281,6 +403,7 @@ def load_image_as_base64(
         download_timeout: URL 下载超时（秒）。
         allowed_formats: 允许的格式扩展名列表。
         allow_compress: 超限时是否允许压缩，False 则直接抛错。
+        allow_private: 是否允许下载内网/保留地址的 URL（默认拒绝，SSRF 防护）。
 
     返回:
         (data_uri, mime)，data_uri 形如 ``data:image/jpeg;base64,....``。
@@ -289,7 +412,7 @@ def load_image_as_base64(
         ImageLoadError: 无法加载/解析/编码。
         ImageTooLargeError: 压缩后仍超限（ImageLoadError 子类）。
     """
-    raw, mime, source = _load_raw(image, download_timeout)
+    raw, mime, source = _load_raw(image, download_timeout, allow_private)
     raw, mime = _verify_and_normalize(raw, mime, allowed_formats or [])
 
     size_kb = len(raw) / 1024
