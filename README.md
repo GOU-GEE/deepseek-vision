@@ -27,24 +27,28 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 步骤指引时再用「完整版」，效果相同。）
 
 > **关于 API Key（请先读）**：
-> - ✅ **免费 Key 可以直接贴在提示词里**（如智谱 `glm-4.6v-flash`、硅基流动的免费模型），
->   把提示词中的 `YOUR_FREE_API_KEY` 换成你的 Key 再发送，助手会全程自动配置。
+> - ✅ 默认方案使用智谱 `glm-4.6v-flash`：把提示词中的 `YOUR_ZHIPU_FREE_API_KEY`
+>   换成你在 `https://open.bigmodel.cn` 申请的智谱 Key，助手会自动配置。
+> - ⚠️ Key、模型和 Base URL 必须属于同一家服务商。硅基流动或通义千问的 Key 也能用，
+>   但必须同时把对应的 `VISION_MODEL` 与 `VISION_BASE_URL` 告诉助手，不能套用智谱默认值。
 > - 🔒 **付费 Key 请勿明文发给 AI 助手**：删掉提示词里的 Key 占位行，助手会引导你
 >   自己填写 `.env`，Key 只保存在你本机，不会经过对话。
 
-**极简版（推荐，一句话）**——助手足够聪明，这段就够：
+**极简版（推荐，一会话从零部署并验收）**——助手足够聪明，这段就够：
 
 ```text
-请帮我安装并启用 https://github.com/GOU-GEE/deepseek-vision 项目，让我的 DeepSeek
-能识别图片（默认用智谱免费视觉模型 glm-4.6v-flash）：克隆仓库 → 建 .venv 虚拟环境 →
-pip install -e ".[dev]" → 配置 API Key（如果我在下面给了免费 Key 就直接用；没给就复制
-.env.example 为 .env 并提示我自己填 VISION_API_KEY，不要向我要付费 Key 明文）→
-deepseek-vision-mcp --check 校验 → 把它注册为 MCP 服务器（command 用 .venv 的 python
-绝对路径，args 为 ["-m","deepseek_vision_mcp"]，env 配 VISION_MODEL 与 VISION_BASE_URL；
-Key 已给则填入 VISION_API_KEY，未给则省略让它自动读 .env）→ 加载 skills/ 目录 →
-最后用 examples/test_image.jpg 自测 analyze_image 工具，并汇报结果。
+请在一个会话内从零安装并验收 https://github.com/GOU-GEE/deepseek-vision，让我的
+DeepSeek 获得视觉能力（默认智谱免费模型 glm-4.6v-flash）：在一个全新的、不复用旧
+仓库或旧虚拟环境的目录中克隆 main → 建 .venv → pip install -e . → 配置 API Key
+（下面给了智谱免费 Key 就写入新目录的 .env；没给就复制 .env.example 并暂停，让我自己填
+VISION_API_KEY，不要索取付费 Key 明文）→ 用 .venv 的 Python 运行
+scripts/verify_install.py，必须实际完成 MCP stdio 握手、vision_status、一次真实识图和
+第二次 cached=true 验收 → 把这个新 .venv 的 Python 绝对路径注册为 deepseek-vision
+MCP（args 为 ["-m","deepseek_vision_mcp"]）→ 加载 skills/vision/SKILL.md。若当前
+Harness 会话不能热加载新 MCP，明确提示我重启/新建会话后发一张图做自动触发终验。
+任何一步失败立即停止并展示完整错误；不要复用旧安装来假装通过，也不要删除旧安装。
 
-[我的免费视觉模型 API Key（可选，免费 Key 才填；付费 Key 请删掉这一行）: YOUR_FREE_API_KEY]
+[我的智谱免费 API Key（可选；付费 Key 请删掉这一行）: YOUR_ZHIPU_FREE_API_KEY]
 ```
 
 **完整版（步骤更明确）**：
@@ -53,25 +57,34 @@ Key 已给则填入 VISION_API_KEY，未给则省略让它自动读 .env）→ �
 请帮我安装并启用 deepseek-vision-mcp（GitHub: https://github.com/GOU-GEE/deepseek-vision），
 它通过 MCP 工具 analyze_image 让纯文本模型具备图片识别能力。请按以下步骤自动完成：
 
-[我的免费视觉模型 API Key（可选，免费 Key 才填；付费 Key 请删掉这一行）: YOUR_FREE_API_KEY]
+[我的智谱免费 API Key（可选；付费 Key 请删掉这一行）: YOUR_ZHIPU_FREE_API_KEY]
 
-1. 克隆仓库到当前目录（已存在则跳过）：git clone https://github.com/GOU-GEE/deepseek-vision.git
+1. 创建一个全新的安装目录（如 `deepseek-vision-fresh`；若已存在则换一个未占用的后缀，
+   不复用、不覆盖、不删除旧安装），在其中克隆 main：
+   `git clone --branch main https://github.com/GOU-GEE/deepseek-vision.git deepseek-vision-fresh`
+   进入仓库后运行 `git status`，确认工作树干净且当前分支为 main。
 2. 检查 Python 版本是否 >= 3.10（Mac/Linux 用 python3 --version；Windows 用
    python --version 或 py -V）。不满足时按平台安装：Mac 用 brew install python@3.12
    或到 python.org 下载；Windows 用 winget install Python.Python.3.12 或到
    python.org 下载（安装时勾选 Add python.exe to PATH）；Linux 用系统包管理器。
-3. 创建虚拟环境并安装依赖（按平台选一条）：
-   - Mac/Linux:  python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
-   - Windows cmd: python -m venv .venv && .venv\Scripts\activate && pip install -e ".[dev]"
-   - Windows PowerShell: py -3.12 -m venv .venv && .venv\Scripts\Activate.ps1 && pip install -e ".[dev]"
+3. 创建全新的虚拟环境并安装运行依赖（按平台选一条）：
+   - Mac/Linux:  `python3 -m venv .venv && .venv/bin/python -m pip install -e .`
+   - Windows cmd: `python -m venv .venv && .venv\Scripts\python.exe -m pip install -e .`
+   - Windows PowerShell: `py -3.12 -m venv .venv; .venv\Scripts\python.exe -m pip install -e .`
 4. 配置 API Key：
-   - 如果我在上面提供了 Key，把它写入 .env 的 VISION_API_KEY。
-     默认视觉模型为智谱 glm-4.6v-flash（免费，可到 https://open.bigmodel.cn 申请；
-     也支持硅基流动 / 通义千问，只需改 VISION_MODEL 与 VISION_BASE_URL）。
+   - 如果我在上面提供了智谱 Key，把它写入 `.env` 的 `VISION_API_KEY`，并确认：
+     `VISION_MODEL=glm-4.6v-flash`、
+     `VISION_BASE_URL=https://open.bigmodel.cn/api/paas/v4`。
+   - 如果我明确提供的是硅基流动或通义千问 Key，必须同时使用该服务商对应的
+     `VISION_MODEL` 与 `VISION_BASE_URL`，禁止把其他服务商 Key 配到智谱 Base URL。
    - 如果我没有提供 Key，**不要向我要明文 Key**：把 .env.example 复制为 .env，
      提示我只需填写 .env 中的 VISION_API_KEY 一个字段，我填好后你再继续。
      （付费 Key 不应明文发送给你，这样更安全。）
-5. 校验配置：运行 deepseek-vision-mcp --check，确认显示 [OK] 配置就绪。
+5. 用新虚拟环境的 Python 完整验收：
+   - Mac/Linux：`.venv/bin/python scripts/verify_install.py`
+   - Windows：`.venv\Scripts\python.exe scripts\verify_install.py`
+   脚本必须依次通过：MCP stdio 握手、4 个工具注册、`vision_status`、一次真实视觉 API
+   识图、同图同提示词第二次 `cached=true`。任一步失败都不能继续注册或声称成功。
 6. 把 deepseek-vision 注册为 MCP 服务器：如果平台允许直接注册就注册，
    否则把下面的配置展示给用户手动填入平台设置：
 {
@@ -91,15 +104,17 @@ Key 已给则填入 VISION_API_KEY，未给则省略让它自动读 .env）→ �
    注意：VISION_API_KEY 未填时，Server 会自动读取 .env，不影响使用。
 7. 加载技能：把仓库的 skills/ 目录加入我的技能搜索路径（重点是 skills/vision/SKILL.md）；
    如果平台不支持技能，把 SKILL.md 里的触发规则作为系统提示词的一部分。
-8. 验证：用 examples/test_image.jpg 实际调用一次 analyze_image 工具，
-   确认能返回图片内容。若注册后当前会话还无法调用该工具，提示用户重启会话。
+8. Harness 终验：如果当前会话支持热加载，发送 `examples/test_image.jpg` 并确认主模型
+   自动调用 `analyze_image`；如果不能热加载，明确提示用户重启或新建会话后发图终验。
 
 执行约束：
 - 每一步失败即停：展示完整错误信息与修复建议，不要跳过或假装成功。
 - 修改任何配置文件都用 merge 合并，不要整文件覆盖；写完后校验 JSON 合法性。
-- 已有仓库/已装的依赖/已配好的环境一律跳过，不要重复执行。
+- 本次是隔离的从零验收：不得复用旧仓库、旧 `.venv` 或旧 MCP command 路径；也不得
+  删除或覆盖旧安装。
 - 不要把 API Key 写进任何提交到仓库的文件（如 config.json 示例），只写本地 .env 或客户端配置。
-- 完成后向用户汇报：安装路径、修改过的文件、如何验证（复制一张图片问一句即可）。
+- 完成后汇报：新安装路径、新 Python 绝对路径、MCP 配置位置、四段验收结果，以及是否
+  需要重启 Harness 才能完成自动触发终验。
 ```
 
 > 如果你更喜欢手动安装，请按下方 [快速开始](#快速开始) 操作，效果完全一样。
@@ -544,7 +559,8 @@ deepseek-vision-mcp/
 │   └── codex_config.toml       # Codex 集成配置示例
 ├── scripts/
 │   ├── install.sh
-│   └── test_mcp.sh
+│   ├── test_mcp.sh             # Mac/Linux 完整验收包装脚本
+│   └── verify_install.py       # 跨平台 MCP + 真实 API + 缓存验收
 ├── tests/                      # pytest 测试（88 个用例）
 ├── SECURITY.md                # 漏洞报告方式与发布安全清单
 └── .github/workflows/         # 测试、MCP 1.x/2.x 兼容与 PyPI 发布

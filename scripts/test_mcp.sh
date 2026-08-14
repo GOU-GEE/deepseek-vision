@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MCP Server 冒烟测试：用 test_mcp 客户端调用 analyze_image 工具。
+# MCP Server 完整验收：stdio 握手 + 真实识图 + 会话缓存。
 # 用法: bash scripts/test_mcp.sh [图片路径]
 set -euo pipefail
 
@@ -12,11 +12,5 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-echo "==> 校验配置"
-python -m deepseek_vision_mcp --check
-
-echo "==> 直接调用视觉模型识别: $IMAGE"
-python -m deepseek_vision_mcp --test-image "$IMAGE"
-
-echo
-echo "==> 冒烟测试完成。若上方输出包含 result 文本，说明集成正常。"
+PYTHON_BIN="${PYTHON_BIN:-python}"
+exec "$PYTHON_BIN" scripts/verify_install.py "$IMAGE"
