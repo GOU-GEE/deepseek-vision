@@ -17,22 +17,33 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 ## 🚀 一句话安装（复制给 AI 助手，免手动操作）
 
 在 DeepSeek Harness / Codex 等智能体平台中，**把下面整段话复制发给你的 AI 助手**，
-它会自动完成：克隆仓库 → 检查并准备 Python 环境 → 安装依赖 → 让你填写 API Key →
+它会自动完成：克隆仓库 → 检查并准备 Python 环境 → 安装依赖 → 配置 API Key →
 注册 MCP 服务器 → 加载 Skill → 自测图片识别。全程无需你手动敲命令。
+
+> **关于 API Key（请先读）**：
+> - ✅ **免费 Key 可以直接贴在提示词里**（如智谱 `glm-4v-flash`、硅基流动的免费模型），
+>   把提示词中的 `YOUR_FREE_API_KEY` 换成你的 Key 再发送，助手会全程自动配置。
+> - 🔒 **付费 Key 请勿明文发给 AI 助手**：删掉提示词里的 Key 占位行，助手会引导你
+>   自己填写 `.env`，Key 只保存在你本机，不会经过对话。
 
 ```text
 请帮我安装并启用 deepseek-vision-mcp（GitHub: https://github.com/GOU-GEE/deepseek-vision），
 它通过 MCP 工具 analyze_image 让纯文本模型具备图片识别能力。请按以下步骤自动完成：
+
+[我的免费视觉模型 API Key（可选，免费 Key 才填；付费 Key 请删掉这一行）: YOUR_FREE_API_KEY]
 
 1. 克隆仓库到当前目录（已存在则跳过）：git clone https://github.com/GOU-GEE/deepseek-vision.git
 2. 检查 python3 版本是否 >= 3.10；不满足时用 brew install python@3.12（Mac）
    或提示用户手动安装（Windows）。
 3. 创建虚拟环境并安装依赖：
    python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
-4. 配置 API Key：把 .env.example 复制为 .env，然后向用户索要视觉模型 API Key
-   （默认智谱 glm-4v-flash，可到 https://open.bigmodel.cn 免费申请；
-   也支持硅基流动 / 通义千问，只需改 VISION_MODEL 与 VISION_BASE_URL），
-   把 Key 填入 .env 的 VISION_API_KEY。
+4. 配置 API Key：
+   - 如果我在上面提供了 Key，把它写入 .env 的 VISION_API_KEY。
+     默认视觉模型为智谱 glm-4v-flash（可到 https://open.bigmodel.cn 免费申请；
+     也支持硅基流动 / 通义千问，只需改 VISION_MODEL 与 VISION_BASE_URL）。
+   - 如果我没有提供 Key，**不要向我要明文 Key**：把 .env.example 复制为 .env，
+     提示我只需填写 .env 中的 VISION_API_KEY 一个字段，我填好后你再继续。
+     （付费 Key 不应明文发送给你，这样更安全。）
 5. 校验配置：运行 deepseek-vision-mcp --check，确认显示 [OK] 配置就绪。
 6. 把 deepseek-vision 注册为 MCP 服务器：如果平台允许直接注册就注册，
    否则把下面的配置展示给用户手动填入平台设置：
@@ -43,13 +54,14 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
       "command": "<第3步虚拟环境的python绝对路径，如 /path/to/.venv/bin/python>",
       "args": ["-m", "deepseek_vision_mcp"],
       "env": {
-        "VISION_API_KEY": "<用户的Key>",
+        "VISION_API_KEY": "<第4步确定的Key；若用户选择自己填 .env 则此项可省略>",
         "VISION_MODEL": "glm-4v-flash",
         "VISION_BASE_URL": "https://open.bigmodel.cn/api/paas/v4"
       }
     }
   ]
 }
+   注意：VISION_API_KEY 未填时，Server 会自动读取 .env，不影响使用。
 7. 加载技能：把仓库的 skills/ 目录加入我的技能搜索路径（重点是 skills/vision/SKILL.md）；
    如果平台不支持技能，把 SKILL.md 里的触发规则作为系统提示词的一部分。
 8. 验证：用 examples/test_image.jpg 实际调用一次 analyze_image 工具，
@@ -62,11 +74,15 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 
 ```text
 请帮我安装并启用 https://github.com/GOU-GEE/deepseek-vision 项目，让我的 DeepSeek
-能识别图片：克隆仓库 → 建 .venv 虚拟环境 → pip install -e ".[dev]" → 复制 .env.example
-为 .env 并让我填 VISION_API_KEY（默认智谱 glm-4v-flash）→ deepseek-vision-mcp --check
-校验 → 把它注册为 MCP 服务器（command 用 .venv 的 python 绝对路径，args 为
-["-m","deepseek_vision_mcp"]，env 配 VISION_API_KEY / VISION_MODEL / VISION_BASE_URL）→
-加载 skills/ 目录 → 最后用 examples/test_image.jpg 自测 analyze_image 工具，并汇报结果。
+能识别图片：克隆仓库 → 建 .venv 虚拟环境 → pip install -e ".[dev]" → 配置 API Key
+（如果我在下面给了免费 Key 就直接用；没给就复制 .env.example 为 .env 并提示我自己填
+VISION_API_KEY，不要向我要付费 Key 明文）→ deepseek-vision-mcp --check 校验 →
+把它注册为 MCP 服务器（command 用 .venv 的 python 绝对路径，args 为
+["-m","deepseek_vision_mcp"]，env 配 VISION_MODEL 与 VISION_BASE_URL；Key 已给则填入
+VISION_API_KEY，未给则省略让它自动读 .env）→ 加载 skills/ 目录 → 最后用
+examples/test_image.jpg 自测 analyze_image 工具，并汇报结果。
+
+[我的免费视觉模型 API Key（可选，免费 Key 才填；付费 Key 请删掉这一行）: YOUR_FREE_API_KEY]
 ```
 
 > 如果你更喜欢手动安装，请按下方 [快速开始](#快速开始) 操作，效果完全一样。
