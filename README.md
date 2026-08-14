@@ -14,8 +14,68 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 
 ---
 
+## 🚀 一句话安装（复制给 AI 助手，免手动操作）
+
+在 DeepSeek Harness / Codex 等智能体平台中，**把下面整段话复制发给你的 AI 助手**，
+它会自动完成：克隆仓库 → 检查并准备 Python 环境 → 安装依赖 → 让你填写 API Key →
+注册 MCP 服务器 → 加载 Skill → 自测图片识别。全程无需你手动敲命令。
+
+```text
+请帮我安装并启用 deepseek-vision-mcp（GitHub: https://github.com/GOU-GEE/deepseek-vision），
+它通过 MCP 工具 analyze_image 让纯文本模型具备图片识别能力。请按以下步骤自动完成：
+
+1. 克隆仓库到当前目录（已存在则跳过）：git clone https://github.com/GOU-GEE/deepseek-vision.git
+2. 检查 python3 版本是否 >= 3.10；不满足时用 brew install python@3.12（Mac）
+   或提示用户手动安装（Windows）。
+3. 创建虚拟环境并安装依赖：
+   python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
+4. 配置 API Key：把 .env.example 复制为 .env，然后向用户索要视觉模型 API Key
+   （默认智谱 glm-4v-flash，可到 https://open.bigmodel.cn 免费申请；
+   也支持硅基流动 / 通义千问，只需改 VISION_MODEL 与 VISION_BASE_URL），
+   把 Key 填入 .env 的 VISION_API_KEY。
+5. 校验配置：运行 deepseek-vision-mcp --check，确认显示 [OK] 配置就绪。
+6. 把 deepseek-vision 注册为 MCP 服务器：如果平台允许直接注册就注册，
+   否则把下面的配置展示给用户手动填入平台设置：
+{
+  "mcp_servers": [
+    {
+      "name": "deepseek-vision",
+      "command": "<第3步虚拟环境的python绝对路径，如 /path/to/.venv/bin/python>",
+      "args": ["-m", "deepseek_vision_mcp"],
+      "env": {
+        "VISION_API_KEY": "<用户的Key>",
+        "VISION_MODEL": "glm-4v-flash",
+        "VISION_BASE_URL": "https://open.bigmodel.cn/api/paas/v4"
+      }
+    }
+  ]
+}
+7. 加载技能：把仓库的 skills/ 目录加入我的技能搜索路径（重点是 skills/vision/SKILL.md）；
+   如果平台不支持技能，把 SKILL.md 里的触发规则作为系统提示词的一部分。
+8. 验证：用 examples/test_image.jpg 实际调用一次 analyze_image 工具，
+   确认能返回图片内容。若注册后当前会话还无法调用该工具，提示用户重启会话。
+
+完成后向用户汇报每一步的结果。
+```
+
+**更短的极简版**（如果助手足够聪明，这段也够用）：
+
+```text
+请帮我安装并启用 https://github.com/GOU-GEE/deepseek-vision 项目，让我的 DeepSeek
+能识别图片：克隆仓库 → 建 .venv 虚拟环境 → pip install -e ".[dev]" → 复制 .env.example
+为 .env 并让我填 VISION_API_KEY（默认智谱 glm-4v-flash）→ deepseek-vision-mcp --check
+校验 → 把它注册为 MCP 服务器（command 用 .venv 的 python 绝对路径，args 为
+["-m","deepseek_vision_mcp"]，env 配 VISION_API_KEY / VISION_MODEL / VISION_BASE_URL）→
+加载 skills/ 目录 → 最后用 examples/test_image.jpg 自测 analyze_image 工具，并汇报结果。
+```
+
+> 如果你更喜欢手动安装，请按下方 [快速开始](#快速开始) 操作，效果完全一样。
+
+---
+
 ## 目录
 
+- [一句话安装（复制给 AI 助手）](#-一句话安装复制给-ai-助手免手动操作)
 - [解决的问题](#解决的问题)
 - [工作原理](#工作原理)
 - [支持的视觉模型](#支持的视觉模型)
@@ -117,7 +177,7 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 要求 **Python 3.10+**。
 
 ```bash
-git clone https://github.com/your-name/deepseek-vision-mcp.git
+git clone https://github.com/GOU-GEE/deepseek-vision.git
 cd deepseek-vision-mcp
 
 # 推荐：创建虚拟环境
