@@ -240,6 +240,17 @@ window.__ModuleLoader__.load({
         control,
         hint ? h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-tertiary, #777)', lineHeight: 1.5 } }, hint) : null,
       )
+      const providerSelect = (value, onChange) => h('span', { style: { position: 'relative', display: 'block' } },
+        h('select', {
+          value,
+          onChange,
+          style: { ...fieldStyle, appearance: 'none', paddingRight: 44, cursor: 'pointer' },
+        }, Object.entries(PROVIDERS).map(([optionValue, item]) => h('option', { key: optionValue, value: optionValue }, item.label))),
+        h(IconChevronDownOutline14, {
+          'aria-hidden': true,
+          style: { position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--dsw-alias-label-tertiary, #777)' },
+        }),
+      )
 
       return h('li', { style: { ...cardStyle, ...(open ? { background: 'var(--dsw-alias-bg-layer-2, transparent)', borderColor: 'var(--dsw-alias-label-dimmed, #aab2bd)' } : {}) } },
         h('button', {
@@ -254,9 +265,7 @@ window.__ModuleLoader__.load({
         ), h(IconChevronDownOutline14, { style: { flex: 'none', color: 'var(--dsw-alias-label-tertiary, #777)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .16s' } })),
         open ? h('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l2, #d0d7de)', margin: '0 16px', paddingBottom: 8, display: 'grid' } },
           loading ? h('p', null, '正在读取配置…') : null,
-          row('视觉服务商', h('select', { value: settings.provider, onChange: changeProvider, style: fieldStyle },
-            Object.entries(PROVIDERS).map(([value, item]) => h('option', { key: value, value }, item.label)),
-          )),
+          row('视觉服务商', providerSelect(settings.provider, changeProvider)),
           row('模型', h('input', { value: settings.model, onChange: event => setSettings(current => ({ ...current, model: event.target.value })), style: fieldStyle, autoComplete: 'off' })),
           row('Base URL', h('input', { value: settings.baseUrl, onChange: event => setSettings(current => ({ ...current, baseUrl: event.target.value })), style: fieldStyle, autoComplete: 'off' }), '必须是 OpenAI 兼容接口；本机地址外必须使用 HTTPS。'),
           row('视觉 API Key', h('input', { type: 'password', value: apiKey, onChange: event => setApiKey(event.target.value), style: fieldStyle, autoComplete: 'new-password', placeholder: credential.configured ? '已安全保存；留空则保持不变' : '请输入 API Key' }), credential.configured ? `状态：已配置${credential.source ? `（${credential.source}）` : ''}` : '状态：未配置'),
@@ -270,9 +279,7 @@ window.__ModuleLoader__.load({
               '启用备用视觉服务（主服务持续限流时自动切换）',
             ),
             settings.fallback?.enabled ? h(React.Fragment, null,
-              row('备用服务商', h('select', { value: settings.fallback.provider, onChange: changeFallbackProvider, style: fieldStyle },
-                Object.entries(PROVIDERS).map(([value, item]) => h('option', { key: value, value }, item.label)),
-              )),
+              row('备用服务商', providerSelect(settings.fallback.provider, changeFallbackProvider)),
               row('备用模型', h('input', { value: settings.fallback.model, onChange: event => setSettings(current => ({ ...current, fallback: { ...current.fallback, model: event.target.value } })), style: fieldStyle, autoComplete: 'off' })),
               row('备用 Base URL', h('input', { value: settings.fallback.baseUrl, onChange: event => setSettings(current => ({ ...current, fallback: { ...current.fallback, baseUrl: event.target.value } })), style: fieldStyle, autoComplete: 'off' })),
               row('备用 API Key', h('input', { type: 'password', value: fallbackApiKey, onChange: event => setFallbackApiKey(event.target.value), style: fieldStyle, autoComplete: 'new-password', placeholder: fallbackCredential.configured ? '已安全保存；留空则保持不变' : '请输入备用服务 Key' }), fallbackCredential.configured ? `状态：已配置${fallbackCredential.source ? `（${fallbackCredential.source}）` : ''}` : '状态：未配置'),
