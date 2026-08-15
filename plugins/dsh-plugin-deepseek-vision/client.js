@@ -246,10 +246,14 @@ window.__ModuleLoader__.load({
           onChange,
           style: { ...fieldStyle, appearance: 'none', paddingRight: 44, cursor: 'pointer' },
         }, Object.entries(PROVIDERS).map(([optionValue, item]) => h('option', { key: optionValue, value: optionValue }, item.label))),
-        h(IconChevronDownOutline14, {
+        h('svg', {
           'aria-hidden': true,
+          width: 14,
+          height: 14,
+          viewBox: '0 0 14 14',
+          focusable: 'false',
           style: { position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--dsw-alias-label-tertiary, #777)' },
-        }),
+        }, h('path', { d: 'M3 5 7 9 11 5', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' })),
       )
 
       return h('li', { style: { ...cardStyle, ...(open ? { background: 'var(--dsw-alias-bg-layer-2, transparent)', borderColor: 'var(--dsw-alias-label-dimmed, #aab2bd)' } : {}) } },
