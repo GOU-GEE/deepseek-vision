@@ -14,6 +14,9 @@ async function loadClient() {
   }
   return specification.factory(name => {
     if (name === 'react') return React
+    if (name === '@deepseek-ai/dsh-client-ui-primitives') {
+      return { IconChevronDownOutline14: props => ({ type: 'chevron', props }) }
+    }
     throw new Error(`unexpected client require: ${name}`)
   })
 }
@@ -50,10 +53,8 @@ test('intercepted image drop releases the native DSH overlay without a duplicate
   const client = await loadClient()
   const listeners = new Map()
   const synthetic = []
-  globalThis.DataTransfer = class { constructor() { this.files = [] } }
-  globalThis.DragEvent = class {
-    constructor(type, options) { this.type = type; Object.assign(this, options) }
-  }
+  let nativeOverlayVisible = true
+  let nativeAttachments = 0
   globalThis.Event = class { constructor(type, options) { this.type = type; Object.assign(this, options) } }
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ path: '/tmp/paste.png' }) })
   globalThis.document = {
@@ -71,7 +72,15 @@ test('intercepted image drop releases the native DSH overlay without a duplicate
   const target = {
     matches: () => true,
     focus: () => undefined,
-    dispatchEvent: event => synthetic.push(event),
+    dispatchEvent: event => {
+      synthetic.push(event)
+      // Mirror DSH rc.5's document-level drop contract: it only resets when
+      // dataTransfer.types contains Files, then consumes dataTransfer.files.
+      if (event.dataTransfer?.types.includes('Files')) {
+        nativeOverlayVisible = false
+        nativeAttachments += event.dataTransfer.files.length
+      }
+    },
   }
   await listeners.get('drop')({
     target,
@@ -81,5 +90,8 @@ test('intercepted image drop releases the native DSH overlay without a duplicate
   })
   assert.equal(synthetic.length, 1)
   assert.equal(synthetic[0].type, 'drop')
+  assert.deepEqual(synthetic[0].dataTransfer.types, ['Files'])
   assert.equal(synthetic[0].dataTransfer.files.length, 0)
+  assert.equal(nativeOverlayVisible, false)
+  assert.equal(nativeAttachments, 0)
 })

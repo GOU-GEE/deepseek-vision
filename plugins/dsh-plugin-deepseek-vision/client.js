@@ -4,6 +4,7 @@ window.__ModuleLoader__.load({
     const module = { exports: {} }
     const React = require('react')
     const { createElement: h, useEffect, useState } = React
+    const { IconChevronDownOutline14 } = require('@deepseek-ai/dsh-client-ui-primitives')
     const ROUTE = '/_dsh/deepseek-vision/paste'
     const SETTINGS_ROUTE = '/_dsh/deepseek-vision/settings'
     const PROVIDERS = {
@@ -12,8 +13,10 @@ window.__ModuleLoader__.load({
       dashscope: { label: '通义千问', model: 'qwen-vl-plus', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
       custom: { label: '自定义 OpenAI 兼容服务', model: '', baseUrl: '' },
     }
-    const fieldStyle = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-secondary, #d0d7de)', background: 'var(--dsw-alias-background-primary, transparent)', color: 'inherit' }
-    const buttonStyle = { padding: '7px 12px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-secondary, #d0d7de)', background: 'var(--dsw-alias-background-secondary, transparent)', color: 'inherit', cursor: 'pointer' }
+    const cardStyle = { listStyle: 'none', border: '1px solid var(--dsw-alias-border-l2, #d0d7de)', background: 'var(--dsw-alias-bg-layer-3, transparent)', borderRadius: 12, overflow: 'hidden' }
+    const headerStyle = { appearance: 'none', width: '100%', font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer', background: 'transparent', border: 0, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }
+    const fieldStyle = { width: '100%', height: 34, boxSizing: 'border-box', padding: '0 12px', borderRadius: 8, border: '1px solid var(--dsw-alias-border-l2, #d0d7de)', background: 'var(--dsw-alias-bg-layer-3, transparent)', color: 'var(--dsw-alias-label-primary, inherit)', font: 'inherit', fontSize: 13 }
+    const buttonStyle = { appearance: 'none', padding: '5px 14px', borderRadius: 8, border: '1px solid var(--dsw-alias-border-l2, #d0d7de)', background: 'transparent', color: 'var(--dsw-alias-label-secondary, inherit)', cursor: 'pointer', font: 'inherit', fontSize: 13, lineHeight: 1.5 }
 
     function clipboardImages(event) {
       return Array.from(event.clipboardData?.items ?? [])
@@ -67,11 +70,17 @@ window.__ModuleLoader__.load({
       // DSH can clear its drag overlay, while this plugin ignores it because it
       // contains no image files.
       try {
-        const dataTransfer = new DataTransfer()
-        const event = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer })
+        const event = new Event('drop', { bubbles: true, cancelable: true })
+        // DSH only resets its drag-depth state when types contains "Files".
+        // Supplying that type with an empty file list reaches its reset branch
+        // without adding a second native attachment.
+        Object.defineProperty(event, 'dataTransfer', {
+          value: { types: ['Files'], files: [] },
+        })
         ;(target?.dispatchEvent ? target : document).dispatchEvent(event)
       } catch {
-        document.dispatchEvent(new Event('dragleave', { bubbles: true }))
+        // DSH also registers dragend on window as an unconditional reset.
+        window.dispatchEvent(new Event('dragend'))
       }
     }
 
@@ -226,20 +235,24 @@ window.__ModuleLoader__.load({
         setError('')
       }
 
-      const row = (label, control, hint) => h('label', { style: { display: 'grid', gap: 5 } },
-        h('span', { style: { fontSize: 13, fontWeight: 600 } }, label),
+      const row = (label, control, hint) => h('label', { style: { display: 'grid', gap: 6, padding: '12px 0' } },
+        h('span', { style: { fontSize: 13, fontWeight: 500, lineHeight: 1.5 } }, label),
         control,
-        hint ? h('span', { style: { fontSize: 12, opacity: 0.7 } }, hint) : null,
+        hint ? h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-tertiary, #777)', lineHeight: 1.5 } }, hint) : null,
       )
 
-      return h('li', { style: { listStyle: 'none', border: '1px solid var(--dsw-alias-border-secondary, #d0d7de)', borderRadius: 10, overflow: 'hidden' } },
+      return h('li', { style: { ...cardStyle, ...(open ? { background: 'var(--dsw-alias-bg-layer-2, transparent)', borderColor: 'var(--dsw-alias-label-dimmed, #aab2bd)' } : {}) } },
         h('button', {
           type: 'button',
           'aria-expanded': open,
+          'aria-label': `${open ? '收起' : '展开'}：DeepSeek Vision`,
           onClick: () => setOpen(value => !value),
-          style: { width: '100%', padding: '12px 14px', border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', textAlign: 'left' },
-        }, h('span', null, h('strong', null, 'DeepSeek Vision'), h('br'), h('small', { style: { opacity: 0.7 } }, '视觉服务商、模型与 API Key')), h('span', null, open ? '▴' : '▾')),
-        open ? h('div', { style: { padding: '0 14px 14px', display: 'grid', gap: 12 } },
+          style: headerStyle,
+        }, h('span', { style: { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 4 } },
+          h('span', { style: { color: 'var(--dsw-alias-label-primary, inherit)', fontSize: 15, fontWeight: 600, lineHeight: 1.4 } }, 'DeepSeek Vision'),
+          h('span', { style: { color: 'var(--dsw-alias-label-tertiary, #777)', fontSize: 13, lineHeight: 1.5 } }, '视觉服务商、模型与 API Key'),
+        ), h(IconChevronDownOutline14, { style: { flex: 'none', color: 'var(--dsw-alias-label-tertiary, #777)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .16s' } })),
+        open ? h('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l2, #d0d7de)', margin: '0 16px', paddingBottom: 8, display: 'grid' } },
           loading ? h('p', null, '正在读取配置…') : null,
           row('视觉服务商', h('select', { value: settings.provider, onChange: changeProvider, style: fieldStyle },
             Object.entries(PROVIDERS).map(([value, item]) => h('option', { key: value, value }, item.label)),

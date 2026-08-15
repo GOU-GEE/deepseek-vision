@@ -48,6 +48,10 @@ npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 > `VISION_BUILD_PYTHON=python3 npm pack`，再把生成的 `.tgz` 安装进 profile。
 > Bundle 自带同版本 Python wheel，避免前后端版本漂移。
 
+正式 npm Bundle 的普通安装目标是 1-3 分钟；仅当系统没有 Python 3.10+ 时，首次
+准备隔离 CPython 可能额外需要 2-8 分钟。源码构建、全套测试和真实 API 验收属于
+发布审计流程，通常需要 15-30 分钟，不是最终用户的日常安装路径。
+
 ## 配置
 
 macOS 桌面版安装并重启后，进入：
