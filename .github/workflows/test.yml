@@ -139,6 +139,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Enable DSH package manager
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+
       - name: Install plugin and Python build dependencies
         run: |
           npm ci --ignore-scripts --prefix plugins/dsh-plugin-deepseek-vision

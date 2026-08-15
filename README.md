@@ -37,7 +37,8 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 ```text
 请在一个会话内从零安装并验收 https://github.com/GOU-GEE/deepseek-vision 的 DSH
 插件，让文本版 DeepSeek 获得视觉能力（默认智谱免费模型 glm-4.6v-flash）：
-1. 在全新的、不复用旧仓库或虚拟环境的目录克隆 main，确认 Node >=22.19、Python >=3.10。
+1. 在全新的、不复用旧仓库或虚拟环境的目录克隆 main，确认 Node >=22.19、Python >=3.10，
+   并运行 corepack enable、corepack prepare pnpm@11.7.0 --activate。
 2. 进入 plugins/dsh-plugin-deepseek-vision，运行 npm ci --ignore-scripts、npm test，
    再以可用的 Python 设置 VISION_BUILD_PYTHON 并运行 npm pack；检查 tarball 内含 LICENSE
    和 runtime/deepseek_vision_mcp-0.2.0-py3-none-any.whl。
@@ -435,7 +436,8 @@ npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 插件首次启动时会在 `$DSH_HOME/cache` 自动准备隔离 Python 环境并启动 MCP，
 无需克隆本仓库、手工建立虚拟环境、修改 Python 绝对路径或复制 Skill。选择文本版
 DeepSeek 后可直接粘贴或拖入图片；插件把图片安全保存为临时文件，并在输入框插入明确的
-视觉工具调用指令。Node.js 要求 `22.19+` 或 `24+`，Python 要求 `3.10+`。
+视觉工具调用指令。Node.js 要求 `22.19+` 或 `24+`，需启用 Corepack/pnpm；Python
+要求 `3.10+`。
 
 > 包内自带完整说明与等效的手写配置（`plugins/dsh-plugin-deepseek-vision/README.md`）。
 > 本包采用 bundle patch 形态并使用 DSH 内置 `dsh-mcp-client`。当前 npm 版本发布前，

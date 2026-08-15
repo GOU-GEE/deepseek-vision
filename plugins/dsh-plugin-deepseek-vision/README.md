@@ -18,6 +18,7 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
 
 - DeepSeek Harness `0.1.0-rc.6`（兼容目标：`>=0.1.0-rc.6 <0.2.0`）
 - Node.js `22.19+` 或 `24+`
+- Corepack 已启用的 pnpm `11.7.0+`（`corepack enable`）
 - Python `3.10+`（只用于插件自动管理的隔离运行时）
 - 首次启动能访问 PyPI，以安装 wheel 的依赖
 
