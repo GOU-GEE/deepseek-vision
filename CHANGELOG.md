@@ -1,9 +1,18 @@
 # Changelog
 
+## v0.3.1（2026-08-15）
+
+正式发布版本。功能与 v0.3.0 相同；版本号提升是因为 npm 的
+`dsh-plugin-deepseek-vision@0.3.0` 已由作者手动认领，为保证
+「GitHub Release → CI 自动发布」不撞版本，统一升级到 0.3.1。
+
+- npm：`dsh-plugin-deepseek-vision@0.3.1`（CI 自动发布，含 provenance）
+- PyPI：`deepseek-vision-mcp==0.3.1`（首次发布，Trusted Publishing
+  自动创建项目）
+
 ## v0.3.0（2026-08-15）
 
-首个正式发布版本。为 DeepSeek Harness 等纯文本模型提供完整的视觉能力：
-MCP Server（Python 包）+ DSH 原生插件（npm 包）+ 自动触发的 vision Skill。
+首个功能完成版本（npm 0.3.0 已手动认领，内容与 0.3.1 一致）。
 
 ### 🚀 新增功能
 

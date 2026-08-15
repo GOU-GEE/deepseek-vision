@@ -1,11 +1,11 @@
-# 发布清单（v0.3.0 首次正式发布）
+# 发布清单（v0.3.1 首次正式发布）
 
 > 发布是不可逆操作。每一步都确认后再执行下一步。
 > **所有 Key 必须全程不经过对话、不写入仓库。** 本清单不含任何密钥。
 
 ## 0. 前置（已完成）
 
-- [x] 代码冻结：HEAD = `399775e`，主仓库与验收克隆一致
+- [x] 代码冻结：HEAD = `bbec1ca`（含 v0.3.1 版本号），主仓库与验收克隆一致
 - [x] 真实 DSH profile 已增量安装 `0.3.0`（与 399775e 哈希一致）
 - [x] 人工 UI 验收通过（下拉箭头 / 拖拽遮罩 / 自动插入 / 无重复附件）
 - [x] 94 pytest + 18 Node 测试通过；CI Run #19 全绿
@@ -39,12 +39,12 @@
 
 - 无需额外配置；Release 由你在网页端创建（见第 2 步）。
 
-## 2. 创建 GitHub Release v0.3.0（触发发布）
+## 2. 创建 GitHub Release v0.3.1（触发发布）
 
 1. 打开 <https://github.com/GOU-GEE/deepseek-vision/releases/new>
-2. 标签（Tag）：`v0.3.0`（目标：`main`）
-3. 标题：`v0.3.0`
-4. 正文：粘贴 [CHANGELOG.md](../CHANGELOG.md) 的 v0.3.0 条目
+2. 标签（Tag）：`v0.3.1`（不要用 v0.3.0——npm 0.3.0 已手动认领，CI 会撞版本）（目标：`main`）
+3. 标题：`v0.3.1`
+4. 正文：粘贴 [CHANGELOG.md](../CHANGELOG.md) 的 v0.3.1 条目
 5. **先点 "Save draft" 检查无误，再点 "Publish release"**
 6. 发布后 `publish.yml` 自动运行：
    - PyPI：构建 wheel/sdist → Twine check → Trusted Publishing 上传
@@ -54,8 +54,8 @@
 ## 3. 发布后验收（全绿 + 可安装才算完成）
 
 - [ ] GitHub Actions Run（publish）全绿
-- [ ] `pip install deepseek-vision-mcp==0.3.0` 可安装
-- [ ] `npm view dsh-plugin-deepseek-vision` 显示 0.3.0
+- [ ] `pip install deepseek-vision-mcp==0.3.1` 可安装
+- [ ] `npm view dsh-plugin-deepseek-vision` 显示 0.3.1
 - [ ] 全新环境 `dsh plugin --profile web add dsh-plugin-deepseek-vision`
       可安装（不再用 tarball）
 - [ ] README 公开安装命令可执行（`pip install` / `dsh plugin add`）
