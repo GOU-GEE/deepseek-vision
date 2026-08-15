@@ -12,6 +12,8 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from deepseek_vision_mcp import __version__ as EXPECTED_VERSION
+
 EXPECTED_TOOLS = {
     "analyze_clipboard",
     "analyze_image",
@@ -41,8 +43,10 @@ async def verify(launcher: Path) -> None:
                     raise RuntimeError(f"DSH 托管运行时工具不匹配：{sorted(names)}")
                 result = await session.call_tool("vision_status", {})
                 payload = json.loads(result.content[0].text)
-                if not payload.get("configured") or payload.get("version") != "0.3.0":
-                    raise RuntimeError(f"DSH 托管运行时状态异常：{payload}")
+                if not payload.get("configured") or payload.get("version") != EXPECTED_VERSION:
+                    raise RuntimeError(
+                        f"DSH 托管运行时状态异常：期望版本 {EXPECTED_VERSION}，实际 {payload}"
+                    )
 
 
 def main() -> int:
