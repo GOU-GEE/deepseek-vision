@@ -15,6 +15,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   provider: 'zhipu',
   model: 'glm-4.6v-flash',
   baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  fallback: {
+    enabled: false,
+    provider: 'siliconflow',
+    model: 'Qwen/Qwen2.5-VL-7B-Instruct',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+  },
 })
 const PROVIDERS = new Set(['zhipu', 'siliconflow', 'dashscope', 'custom'])
 const TEST_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
@@ -48,22 +54,30 @@ export function settingsPath(environment = process.env) {
 
 export function validateSettings(value) {
   if (!value || typeof value !== 'object') throw new TypeError('配置必须是对象')
-  const provider = String(value.provider ?? '').trim()
-  const model = String(value.model ?? '').trim()
-  const baseUrl = String(value.baseUrl ?? '').trim().replace(/\/+$/, '')
-  if (!PROVIDERS.has(provider)) throw new TypeError('不支持的视觉服务商')
-  if (!model || model.length > 200) throw new TypeError('模型名称不能为空或过长')
-  let parsed
-  try {
-    parsed = new URL(baseUrl)
-  } catch {
-    throw new TypeError('Base URL 格式无效')
+  const validateEndpoint = (endpoint, label) => {
+    const provider = String(endpoint?.provider ?? '').trim()
+    const model = String(endpoint?.model ?? '').trim()
+    const baseUrl = String(endpoint?.baseUrl ?? '').trim().replace(/\/+$/, '')
+    if (!PROVIDERS.has(provider)) throw new TypeError(`不支持的${label}视觉服务商`)
+    if (!model || model.length > 200) throw new TypeError(`${label}模型名称不能为空或过长`)
+    let parsed
+    try {
+      parsed = new URL(baseUrl)
+    } catch {
+      throw new TypeError(`${label} Base URL 格式无效`)
+    }
+    const loopback = ['127.0.0.1', '::1', 'localhost'].includes(parsed.hostname)
+    if (parsed.username || parsed.password || (parsed.protocol !== 'https:' && !(loopback && parsed.protocol === 'http:'))) {
+      throw new TypeError(`${label} Base URL 必须使用 HTTPS（本机回环地址可使用 HTTP）且不能包含凭据`)
+    }
+    return { provider, model, baseUrl }
   }
-  const loopback = ['127.0.0.1', '::1', 'localhost'].includes(parsed.hostname)
-  if (parsed.username || parsed.password || (parsed.protocol !== 'https:' && !(loopback && parsed.protocol === 'http:'))) {
-    throw new TypeError('Base URL 必须使用 HTTPS（本机回环地址可使用 HTTP）且不能包含凭据')
-  }
-  return { provider, model, baseUrl }
+  const primary = validateEndpoint(value, '主服务')
+  const fallbackEnabled = value.fallback?.enabled === true
+  const fallback = fallbackEnabled
+    ? { enabled: true, ...validateEndpoint(value.fallback, '备用服务') }
+    : { enabled: false, ...DEFAULT_SETTINGS.fallback }
+  return { ...primary, fallback }
 }
 
 export function loadVisionSettings(environment = process.env) {
@@ -108,19 +122,6 @@ export function isSameOrigin(req) {
   }
 }
 
-export function launcherShimPath(environment = process.env) {
-  const home = environment.DSH_HOME || join(homedir(), '.dsh')
-  return join(home, 'cache', 'deepseek-vision-mcp', 'launcher.mjs')
-}
-
-export function ensureLauncherShim(environment = process.env) {
-  const target = launcherShimPath(environment)
-  mkdirSync(dirname(target), { recursive: true })
-  const launcher = new URL('./launcher.js', import.meta.url).href
-  writeFileSync(target, `import { main } from ${JSON.stringify(launcher)}\nmain()\n`, { mode: 0o700 })
-  return target
-}
-
 function json(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
   res.end(JSON.stringify(body))
@@ -135,8 +136,8 @@ async function readJson(req) {
   }
 }
 
-async function credentialView(credentials) {
-  const view = await credentials.describe('VISION_API_KEY')
+async function credentialView(credentials, name = 'VISION_API_KEY') {
+  const view = await credentials.describe(name)
   return {
     configured: view.configured === true,
     writable: view.writable !== false,
@@ -215,6 +216,7 @@ export function registerSettingsRoute(ctx) {
           return json(res, 200, {
             settings: loadVisionSettings(),
             credential: await credentialView(ctx.credentials),
+            fallbackCredential: await credentialView(ctx.credentials, 'VISION_FALLBACK_API_KEY'),
           })
         } catch {
           return json(res, 503, { error: '视觉配置暂时不可用' })
@@ -227,10 +229,13 @@ export function registerSettingsRoute(ctx) {
         if (body.action === 'save') {
           const settings = saveVisionSettings(body.settings)
           const key = typeof body.apiKey === 'string' ? body.apiKey.trim() : ''
+          const fallbackKey = typeof body.fallbackApiKey === 'string' ? body.fallbackApiKey.trim() : ''
           if (key) await ctx.credentials.set('VISION_API_KEY', key)
+          if (fallbackKey) await ctx.credentials.set('VISION_FALLBACK_API_KEY', fallbackKey)
           return json(res, 200, {
             settings,
             credential: await credentialView(ctx.credentials),
+            fallbackCredential: await credentialView(ctx.credentials, 'VISION_FALLBACK_API_KEY'),
             restartRequired: true,
           })
         }
@@ -238,12 +243,21 @@ export function registerSettingsRoute(ctx) {
           await ctx.credentials.unset('VISION_API_KEY')
           return json(res, 200, { credential: await credentialView(ctx.credentials) })
         }
+        if (body.action === 'unset-fallback-key') {
+          await ctx.credentials.unset('VISION_FALLBACK_API_KEY')
+          return json(res, 200, { fallbackCredential: await credentialView(ctx.credentials, 'VISION_FALLBACK_API_KEY') })
+        }
         if (body.action === 'test') {
           const settings = validateSettings(body.settings)
-          const supplied = typeof body.apiKey === 'string' ? body.apiKey.trim() : ''
-          const resolved = supplied || (await ctx.credentials.resolve('VISION_API_KEY'))?.value?.trim()
+          const targetFallback = body.target === 'fallback'
+          const endpoint = targetFallback ? settings.fallback : settings
+          if (targetFallback && !settings.fallback.enabled) throw new TypeError('请先启用备用服务')
+          const suppliedValue = targetFallback ? body.fallbackApiKey : body.apiKey
+          const supplied = typeof suppliedValue === 'string' ? suppliedValue.trim() : ''
+          const credentialName = targetFallback ? 'VISION_FALLBACK_API_KEY' : 'VISION_API_KEY'
+          const resolved = supplied || (await ctx.credentials.resolve(credentialName))?.value?.trim()
           if (!resolved) throw new TypeError('请先填写视觉 API Key')
-          return json(res, 200, await testVisionConnection(settings, resolved))
+          return json(res, 200, await testVisionConnection(endpoint, resolved))
         }
         throw new TypeError('未知操作')
       } catch (error) {
@@ -255,7 +269,6 @@ export function registerSettingsRoute(ctx) {
 }
 
 export function apply(ctx) {
-  ensureLauncherShim()
   // webServer is unavailable in the headless profile. Optional scoped
   // injection keeps the host plugin usable there without blocking startup.
   if (typeof ctx.inject === 'function') {

@@ -29,6 +29,9 @@ class FakeProvider:
             "text": self.text,
             "model": self.model,
             "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+            "provider": "siliconflow",
+            "fallback_used": True,
+            "attempts": 3,
         }
 
     def close(self):
@@ -56,6 +59,9 @@ class TestSuccess:
         assert out["result"] == "这是一张测试图片"
         assert out["model"] == "fake-vl"
         assert out["usage"]["total_tokens"] == 3
+        assert out["provider"] == "siliconflow"
+        assert out["fallback_used"] is True
+        assert out["attempts"] == 3
         assert fake.closed  # 提供商实例被正确释放
 
     def test_url_success(self, vision_config):

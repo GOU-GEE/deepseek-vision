@@ -41,7 +41,7 @@ async def verify(launcher: Path) -> None:
                     raise RuntimeError(f"DSH 托管运行时工具不匹配：{sorted(names)}")
                 result = await session.call_tool("vision_status", {})
                 payload = json.loads(result.content[0].text)
-                if not payload.get("configured") or payload.get("version") != "0.2.0":
+                if not payload.get("configured") or payload.get("version") != "0.3.0":
                     raise RuntimeError(f"DSH 托管运行时状态异常：{payload}")
 
 

@@ -2,11 +2,13 @@
 
 from .base import BaseVisionProvider, VisionProviderError
 from .openai_compatible import OpenAICompatibleProvider
+from .router import FallbackVisionProvider
 
 __all__ = [
     "BaseVisionProvider",
     "VisionProviderError",
     "OpenAICompatibleProvider",
+    "FallbackVisionProvider",
     "build_provider",
 ]
 
@@ -19,15 +21,7 @@ def build_provider(config) -> BaseVisionProvider:
     """
     name = getattr(config, "provider", "openai_compatible")
     if name in ("openai", "openai_compatible"):
-        return OpenAICompatibleProvider(
-            api_key=config.api_key,
-            model=config.model,
-            base_url=config.base_url,
-            timeout_seconds=config.timeout_seconds,
-            temperature=getattr(config, "temperature", 0.3),
-            api_keys=getattr(config, "api_keys", None),
-            models=getattr(config, "models", None),
-        )
+        return FallbackVisionProvider(config)
     raise VisionProviderError(
         f"未知的提供商类型：{name!r}。当前支持：openai_compatible。"
     )

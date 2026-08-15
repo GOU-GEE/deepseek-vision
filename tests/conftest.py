@@ -79,6 +79,7 @@ def make_config(**overrides) -> VisionConfig:
         "allow_private_urls": False,
         "allowed_formats": ["jpg", "jpeg", "png", "webp"],
         "provider": "openai_compatible",
+        "service_id": "zhipu",
         "use_config_file": False,
         "cache_enabled": True,
         "cache_max_entries": 128,

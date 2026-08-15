@@ -159,8 +159,8 @@ jobs:
         run: |
           cd plugins/dsh-plugin-deepseek-vision
           npm pack
-          tar -tf dsh-plugin-deepseek-vision-0.2.0.tgz | grep 'runtime/deepseek_vision_mcp-.*\.whl'
-          tar -tf dsh-plugin-deepseek-vision-0.2.0.tgz | grep 'package/LICENSE'
+          tar -tf dsh-plugin-deepseek-vision-0.3.0.tgz | grep 'runtime/deepseek_vision_mcp-.*\.whl'
+          tar -tf dsh-plugin-deepseek-vision-0.3.0.tgz | grep 'package/LICENSE'
 
       - name: Managed runtime MCP handshake
         env:
@@ -170,17 +170,19 @@ jobs:
       - name: Install bundle into an isolated official DSH profile
         run: |
           export DSH_HOME="$RUNNER_TEMP/dsh-home"
-          TARBALL="$GITHUB_WORKSPACE/plugins/dsh-plugin-deepseek-vision/dsh-plugin-deepseek-vision-0.2.0.tgz"
+          TARBALL="$GITHUB_WORKSPACE/plugins/dsh-plugin-deepseek-vision/dsh-plugin-deepseek-vision-0.3.0.tgz"
           npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add "$TARBALL"
           npx -y @deepseek-ai/dsh@0.1.0-rc.6 --profile web --dump-config > "$RUNNER_TEMP/dsh-config.txt"
           grep -q 'deepseek-vision-host' "$RUNNER_TEMP/dsh-config.txt"
           grep -q 'deepseek-vision-mcp' "$RUNNER_TEMP/dsh-config.txt"
-          grep -q 'deepseek-vision-mcp/launcher.mjs' "$RUNNER_TEMP/dsh-config.txt"
+          grep -q 'dsh-plugin-deepseek-vision/launcher.js' "$RUNNER_TEMP/dsh-config.txt"
+          grep -q "ELECTRON_RUN_AS_NODE: '1'" "$RUNNER_TEMP/dsh-config.txt"
           grep -q 'DSH_HOME:' "$RUNNER_TEMP/dsh-config.txt"
 
       - name: Validate DSH manifest and composition
         run: |
           node -e "const p=require('./plugins/dsh-plugin-deepseek-vision/package.json'); if(!p.dsh?.bundle?.patch||!p.dsh?.client) process.exit(1)"
           grep -q "@deepseek-ai/dsh-mcp-client" plugins/dsh-plugin-deepseek-vision/cordis.patch.yml
-          grep -q "deepseek-vision-mcp/launcher.mjs" plugins/dsh-plugin-deepseek-vision/cordis.patch.yml
+          grep -q "dsh-plugin-deepseek-vision/launcher.js" plugins/dsh-plugin-deepseek-vision/cordis.patch.yml
+          grep -q "ELECTRON_RUN_AS_NODE: '1'" plugins/dsh-plugin-deepseek-vision/cordis.patch.yml
           grep -q "DSH_HOME:" plugins/dsh-plugin-deepseek-vision/cordis.patch.yml

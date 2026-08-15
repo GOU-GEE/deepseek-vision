@@ -73,6 +73,44 @@ class TestEnvOverride:
         assert cfg.api_key == "key-a"
         assert cfg.models == ["primary-vl", "backup-vl"]
 
+    def test_cross_provider_fallback_resolves_key_by_environment_name(self):
+        cfg = load_config(
+            env={
+                "VISION_API_KEY": "primary-key",
+                "VISION_FALLBACK_API_KEY": "fallback-key",
+                "VISION_FALLBACKS_JSON": json.dumps([{
+                    "id": "siliconflow",
+                    "model": "backup-vl",
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key_env": "VISION_FALLBACK_API_KEY",
+                }]),
+            },
+            config_path="",
+        )
+        assert cfg.fallback_endpoints == [{
+            "id": "siliconflow",
+            "model": "backup-vl",
+            "models": ["backup-vl"],
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "fallback-key",
+        }]
+        assert cfg.max_attempts == 4
+
+    def test_fallback_without_configured_credential_is_skipped(self):
+        cfg = load_config(
+            env={
+                "VISION_API_KEY": "primary-key",
+                "VISION_FALLBACKS_JSON": json.dumps([{
+                    "id": "backup",
+                    "model": "backup-vl",
+                    "base_url": "https://backup.example/v1",
+                    "api_key_env": "VISION_FALLBACK_API_KEY",
+                }]),
+            },
+            config_path="",
+        )
+        assert cfg.fallback_endpoints == []
+
 
 class TestConfigFile:
     def test_nested_config_json(self, tmp_path):

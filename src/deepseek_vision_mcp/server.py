@@ -52,6 +52,9 @@ def _build_result(
     usage: Optional[Dict[str, Any]] = None,
     error: Optional[str] = None,
     cached: bool = False,
+    provider: Optional[str] = None,
+    fallback_used: bool = False,
+    attempts: int = 0,
 ) -> str:
     """把结果统一序列化为 JSON 字符串返回给主模型。"""
     payload = {
@@ -60,6 +63,9 @@ def _build_result(
         "model": model,
         "usage": usage or {},
         "cached": cached,
+        "provider": provider,
+        "fallback_used": fallback_used,
+        "attempts": attempts,
     }
     if error is not None:
         payload["error"] = error
@@ -75,6 +81,12 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
     """
     cfg_holder: Dict[str, Any] = {"config": config}
     cache_holder: Dict[str, Any] = {"signature": None, "cache": None}
+
+    def route_signature(cfg: Any) -> list[str]:
+        values = [cfg.base_url, *getattr(cfg, "models", [cfg.model])]
+        for endpoint in getattr(cfg, "fallback_endpoints", []):
+            values.extend([endpoint["base_url"], *endpoint.get("models", [endpoint["model"]])])
+        return values
 
     def get_cache(cfg: Any) -> Optional[ResultCache]:
         if not getattr(cfg, "cache_enabled", False):
@@ -136,7 +148,7 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
 
             cache = get_cache(cfg)
             cache_key = make_cache_key(
-                [data_uri], effective_prompt, cfg.base_url, getattr(cfg, "models", [cfg.model])
+                [data_uri], effective_prompt, cfg.base_url, route_signature(cfg)
             )
             cached_outcome = cache.get(cache_key) if cache else None
             if cached_outcome is not None:
@@ -147,6 +159,9 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
                     model=cached_outcome.get("model") or cfg.model,
                     usage=cached_outcome.get("usage"),
                     cached=True,
+                    provider=cached_outcome.get("provider"),
+                    fallback_used=cached_outcome.get("fallback_used", False),
+                    attempts=0,
                 )
 
             provider = build_provider(cfg)
@@ -162,6 +177,9 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
                 result=outcome["text"],
                 model=outcome.get("model") or cfg.model,
                 usage=outcome.get("usage"),
+                provider=outcome.get("provider"),
+                fallback_used=outcome.get("fallback_used", False),
+                attempts=outcome.get("attempts", 0),
             )
         except ValueError as exc:
             logger.error("配置错误：%s", exc)
@@ -263,7 +281,7 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
 
             cache = get_cache(cfg)
             cache_key = make_cache_key(
-                data_uris, prompt, cfg.base_url, getattr(cfg, "models", [cfg.model])
+                data_uris, prompt, cfg.base_url, route_signature(cfg)
             )
             cached_outcome = cache.get(cache_key) if cache else None
             if cached_outcome is not None:
@@ -273,6 +291,9 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
                     model=cached_outcome.get("model") or cfg.model,
                     usage=cached_outcome.get("usage"),
                     cached=True,
+                    provider=cached_outcome.get("provider"),
+                    fallback_used=cached_outcome.get("fallback_used", False),
+                    attempts=0,
                 )
 
             provider = build_provider(cfg)
@@ -288,6 +309,9 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
                 result=outcome["text"],
                 model=outcome.get("model") or cfg.model,
                 usage=outcome.get("usage"),
+                provider=outcome.get("provider"),
+                fallback_used=outcome.get("fallback_used", False),
+                attempts=outcome.get("attempts", 0),
             )
         except ValueError as exc:
             logger.error("配置错误：%s", exc)
@@ -323,6 +347,10 @@ def create_server(config: Optional[Any] = None) -> _ServerBase:
                 "api_key_count": len(getattr(cfg, "api_keys", [cfg.api_key])),
                 "base_url": cfg.base_url,
                 "provider": cfg.provider,
+                "service_id": getattr(cfg, "service_id", "primary"),
+                "fallback_count": len(getattr(cfg, "fallback_endpoints", [])),
+                "max_attempts": getattr(cfg, "max_attempts", 4),
+                "circuit_cooldown_seconds": getattr(cfg, "circuit_cooldown_seconds", 90),
                 "max_image_size_kb": cfg.max_image_size_kb,
                 "timeout_seconds": cfg.timeout_seconds,
                 "temperature": cfg.temperature,

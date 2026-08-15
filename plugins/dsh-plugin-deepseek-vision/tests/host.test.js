@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { detectImageExtension, ensureLauncherShim, isSameOrigin, launcherShimPath, loadVisionSettings, saveVisionSettings, settingsPath, storePastedImage, testVisionConnection, validateSettings } from '../index.js'
+import { detectImageExtension, isSameOrigin, loadVisionSettings, saveVisionSettings, settingsPath, storePastedImage, testVisionConnection, validateSettings } from '../index.js'
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
 
@@ -26,15 +26,6 @@ test('rejects content that only claims to be an image', async () => {
   await assert.rejects(() => storePastedImage(Buffer.from('<html>oops</html>')), /不是受支持/)
 })
 
-test('creates a launcher shim inside DSH_HOME without registry lookup', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'deepseek-vision-dsh-home-'))
-  const environment = { DSH_HOME: home }
-  const path = ensureLauncherShim(environment)
-  assert.equal(path, launcherShimPath(environment))
-  assert.match(await readFile(path, 'utf8'), /launcher\.js/)
-  if (process.platform !== 'win32') assert.equal((await stat(path)).mode & 0o777, 0o700)
-})
-
 test('rejects browser requests from a different origin', () => {
   assert.equal(isSameOrigin({ headers: { host: '127.0.0.1:3080' } }), true)
   assert.equal(isSameOrigin({ headers: { host: '127.0.0.1:3080', origin: 'http://127.0.0.1:3080' } }), true)
@@ -54,6 +45,25 @@ test('stores non-secret visual settings privately and reloads them', async () =>
   assert.deepEqual(loadVisionSettings(environment), settings)
   assert.doesNotMatch(await readFile(settingsPath(environment), 'utf8'), /must-not-be-written/)
   if (process.platform !== 'win32') assert.equal((await stat(settingsPath(environment))).mode & 0o777, 0o600)
+})
+
+test('stores fallback provider settings without either credential', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'deepseek-vision-fallback-settings-'))
+  const settings = saveVisionSettings({
+    provider: 'zhipu',
+    model: 'glm-4.6v-flash',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    fallback: {
+      enabled: true,
+      provider: 'siliconflow',
+      model: 'backup-vl',
+      baseUrl: 'https://api.siliconflow.cn/v1',
+      apiKey: 'fallback-must-not-be-written',
+    },
+  }, { DSH_HOME: home })
+  assert.equal(settings.fallback.enabled, true)
+  const raw = await readFile(settingsPath({ DSH_HOME: home }), 'utf8')
+  assert.doesNotMatch(raw, /fallback-must-not-be-written|apiKey/)
 })
 
 test('visual settings reject unsafe base URLs and embedded credentials', () => {

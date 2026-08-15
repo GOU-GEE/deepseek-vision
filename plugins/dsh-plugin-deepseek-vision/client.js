@@ -61,6 +61,20 @@ window.__ModuleLoader__.load({
       return true
     }
 
+    function releaseNativeDropOverlay(target) {
+      // The real drop is intentionally intercepted so DSH does not add a
+      // duplicate native attachment. Follow it with an empty synthetic drop:
+      // DSH can clear its drag overlay, while this plugin ignores it because it
+      // contains no image files.
+      try {
+        const dataTransfer = new DataTransfer()
+        const event = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer })
+        ;(target?.dispatchEvent ? target : document).dispatchEvent(event)
+      } catch {
+        document.dispatchEvent(new Event('dragleave', { bubbles: true }))
+      }
+    }
+
     async function handleImages(event, images, action) {
       // Only take over a positively identified text-only DeepSeek route.
       // Unknown or native-vision models retain DSH's normal attachment path.
@@ -73,6 +87,8 @@ window.__ModuleLoader__.load({
         insertText(event.target, instruction)
       } catch (error) {
         console.error(`[deepseek-vision] ${action} failed: ${error?.message ?? error}`)
+      } finally {
+        if (action === 'drop') releaseNativeDropOverlay(event.target)
       }
     }
 
@@ -104,7 +120,9 @@ window.__ModuleLoader__.load({
       const [loading, setLoading] = useState(true)
       const [settings, setSettings] = useState({ ...PROVIDERS.zhipu, provider: 'zhipu' })
       const [credential, setCredential] = useState({ configured: false, writable: true })
+      const [fallbackCredential, setFallbackCredential] = useState({ configured: false, writable: true })
       const [apiKey, setApiKey] = useState('')
+      const [fallbackApiKey, setFallbackApiKey] = useState('')
       const [busy, setBusy] = useState('')
       const [message, setMessage] = useState('')
       const [error, setError] = useState('')
@@ -115,6 +133,7 @@ window.__ModuleLoader__.load({
           if (!active) return
           setSettings(payload.settings)
           setCredential(payload.credential)
+          setFallbackCredential(payload.fallbackCredential)
         }).catch(reason => {
           if (active) setError(reason.message || String(reason))
         }).finally(() => {
@@ -127,6 +146,7 @@ window.__ModuleLoader__.load({
         const provider = event.target.value
         const preset = PROVIDERS[provider]
         setSettings(current => ({
+          ...current,
           provider,
           model: provider === 'custom' ? current.model : preset.model,
           baseUrl: provider === 'custom' ? current.baseUrl : preset.baseUrl,
@@ -135,18 +155,21 @@ window.__ModuleLoader__.load({
         setError('')
       }
 
-      const act = async (action) => {
-        setBusy(action)
+      const act = async (action, target = 'primary') => {
+        const busyName = action === 'test' ? `test-${target}` : action
+        setBusy(busyName)
         setMessage('')
         setError('')
         try {
-          const payload = await settingsRequest({ action, settings, apiKey })
+          const payload = await settingsRequest({ action, target, settings, apiKey, fallbackApiKey })
           if (payload.credential) setCredential(payload.credential)
+          if (payload.fallbackCredential) setFallbackCredential(payload.fallbackCredential)
           if (action === 'save') {
             setApiKey('')
+            setFallbackApiKey('')
             setMessage('保存成功。请按 ⌘Q 完全退出并重新打开 DeepSeek Harness，使 MCP 使用新配置。')
           } else {
-            setMessage(`连接正常，实际响应模型：${payload.model || settings.model}`)
+            setMessage(`${target === 'fallback' ? '备用服务' : '主服务'}连接正常，实际响应模型：${payload.model || settings.model}`)
           }
         } catch (reason) {
           setError(reason.message || String(reason))
@@ -171,6 +194,38 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const unsetFallbackKey = async () => {
+        setBusy('unset-fallback-key')
+        setMessage('')
+        setError('')
+        try {
+          const payload = await settingsRequest({ action: 'unset-fallback-key' })
+          setFallbackCredential(payload.fallbackCredential)
+          setFallbackApiKey('')
+          setMessage('已清除备用服务 API Key。')
+        } catch (reason) {
+          setError(reason.message || String(reason))
+        } finally {
+          setBusy('')
+        }
+      }
+
+      const changeFallbackProvider = event => {
+        const provider = event.target.value
+        const preset = PROVIDERS[provider]
+        setSettings(current => ({
+          ...current,
+          fallback: {
+            ...current.fallback,
+            provider,
+            model: provider === 'custom' ? current.fallback.model : preset.model,
+            baseUrl: provider === 'custom' ? current.fallback.baseUrl : preset.baseUrl,
+          },
+        }))
+        setMessage('')
+        setError('')
+      }
+
       const row = (label, control, hint) => h('label', { style: { display: 'grid', gap: 5 } },
         h('span', { style: { fontSize: 13, fontWeight: 600 } }, label),
         control,
@@ -192,11 +247,31 @@ window.__ModuleLoader__.load({
           row('模型', h('input', { value: settings.model, onChange: event => setSettings(current => ({ ...current, model: event.target.value })), style: fieldStyle, autoComplete: 'off' })),
           row('Base URL', h('input', { value: settings.baseUrl, onChange: event => setSettings(current => ({ ...current, baseUrl: event.target.value })), style: fieldStyle, autoComplete: 'off' }), '必须是 OpenAI 兼容接口；本机地址外必须使用 HTTPS。'),
           row('视觉 API Key', h('input', { type: 'password', value: apiKey, onChange: event => setApiKey(event.target.value), style: fieldStyle, autoComplete: 'new-password', placeholder: credential.configured ? '已安全保存；留空则保持不变' : '请输入 API Key' }), credential.configured ? `状态：已配置${credential.source ? `（${credential.source}）` : ''}` : '状态：未配置'),
+          h('div', { style: { borderTop: '1px solid var(--dsw-alias-border-secondary, #d0d7de)', paddingTop: 12, display: 'grid', gap: 12 } },
+            h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 } },
+              h('input', {
+                type: 'checkbox',
+                checked: settings.fallback?.enabled === true,
+                onChange: event => setSettings(current => ({ ...current, fallback: { ...(current.fallback || PROVIDERS.siliconflow), enabled: event.target.checked, provider: current.fallback?.provider || 'siliconflow' } })),
+              }),
+              '启用备用视觉服务（主服务持续限流时自动切换）',
+            ),
+            settings.fallback?.enabled ? h(React.Fragment, null,
+              row('备用服务商', h('select', { value: settings.fallback.provider, onChange: changeFallbackProvider, style: fieldStyle },
+                Object.entries(PROVIDERS).map(([value, item]) => h('option', { key: value, value }, item.label)),
+              )),
+              row('备用模型', h('input', { value: settings.fallback.model, onChange: event => setSettings(current => ({ ...current, fallback: { ...current.fallback, model: event.target.value } })), style: fieldStyle, autoComplete: 'off' })),
+              row('备用 Base URL', h('input', { value: settings.fallback.baseUrl, onChange: event => setSettings(current => ({ ...current, fallback: { ...current.fallback, baseUrl: event.target.value } })), style: fieldStyle, autoComplete: 'off' })),
+              row('备用 API Key', h('input', { type: 'password', value: fallbackApiKey, onChange: event => setFallbackApiKey(event.target.value), style: fieldStyle, autoComplete: 'new-password', placeholder: fallbackCredential.configured ? '已安全保存；留空则保持不变' : '请输入备用服务 Key' }), fallbackCredential.configured ? `状态：已配置${fallbackCredential.source ? `（${fallbackCredential.source}）` : ''}` : '状态：未配置'),
+            ) : null,
+          ),
           h('p', { style: { margin: 0, fontSize: 12, opacity: 0.72 } }, '“测试连接”会发送一张 1×1 图片和最多 8 tokens，产生一次极小的真实视觉请求。Key 不会回显到页面、日志或普通配置。'),
           h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
             h('button', { type: 'button', disabled: Boolean(busy) || loading, onClick: () => act('save'), style: buttonStyle }, busy === 'save' ? '保存中…' : '保存'),
-            h('button', { type: 'button', disabled: Boolean(busy) || loading, onClick: () => act('test'), style: buttonStyle }, busy === 'test' ? '测试中…' : '测试连接'),
+            h('button', { type: 'button', disabled: Boolean(busy) || loading, onClick: () => act('test', 'primary'), style: buttonStyle }, busy === 'test-primary' ? '测试中…' : '测试主服务'),
+            settings.fallback?.enabled ? h('button', { type: 'button', disabled: Boolean(busy) || loading, onClick: () => act('test', 'fallback'), style: buttonStyle }, busy === 'test-fallback' ? '测试中…' : '测试备用服务') : null,
             credential.configured ? h('button', { type: 'button', disabled: Boolean(busy) || !credential.writable, onClick: unsetKey, style: buttonStyle }, busy === 'unset-key' ? '清除中…' : '清除 Key') : null,
+            settings.fallback?.enabled && fallbackCredential.configured ? h('button', { type: 'button', disabled: Boolean(busy) || !fallbackCredential.writable, onClick: unsetFallbackKey, style: buttonStyle }, busy === 'unset-fallback-key' ? '清除中…' : '清除备用 Key') : null,
           ),
           message ? h('p', { role: 'status', style: { margin: 0, color: 'var(--dsw-alias-label-success, #1a7f37)' } }, message) : null,
           error ? h('p', { role: 'alert', style: { margin: 0, color: 'var(--dsw-alias-label-danger, #cf222e)' } }, error) : null,

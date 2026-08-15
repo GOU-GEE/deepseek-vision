@@ -3,7 +3,8 @@
 # The host row provides the safe paste-to-path bridge. The MCP row launches a
 # version-locked npm executable; on first start it prepares an isolated Python
 # environment under $DSH_HOME/cache and then starts deepseek-vision-mcp. The
-# host row creates the launcher shim before this MCP row activates.
+# launcher is addressed inside the installed npm package, so activation order
+# does not create a first-start race.
 - insert:
     - id: deepseek-vision-host
       name: dsh-plugin-deepseek-vision
@@ -13,20 +14,30 @@
       config:
         serverName: deepseek-vision
         transport: stdio
-        command: node
+        # In the desktop app process.execPath is the bundled Electron binary;
+        # the explicit environment flag below makes it run as Node. In CLI/web
+        # it is the current Node executable. This avoids relying on the GUI
+        # application's intentionally minimal PATH.
+        command: !!js process.execPath
         args:
-          - !!js (process.env.DSH_HOME ?? ((process.env.USERPROFILE ?? process.env.HOME ?? '.') + '/.dsh')) + '/cache/deepseek-vision-mcp/launcher.mjs'
+          - !!js (process.env.DSH_HOME ?? ((process.env.USERPROFILE ?? process.env.HOME ?? '.') + '/.dsh')) + '/profiles/web/node_modules/dsh-plugin-deepseek-vision/launcher.js'
         env:
           # dsh-mcp-client intentionally builds a narrow child environment.
           # Forward these explicitly so the managed runtime stays inside the
           # active (including isolated test) DSH home and honours Python choice.
+          ELECTRON_RUN_AS_NODE: '1'
           DSH_HOME: !!js process.env.DSH_HOME ?? ((process.env.USERPROFILE ?? process.env.HOME ?? '.') + '/.dsh')
           VISION_PYTHON: !!js process.env.VISION_PYTHON ?? ''
           VISION_API_KEY: !!js process.env.VISION_API_KEY ?? ''
           VISION_API_KEYS: !!js process.env.VISION_API_KEYS ?? ''
+          VISION_FALLBACK_API_KEY: !!js process.env.VISION_FALLBACK_API_KEY ?? ''
+          VISION_FALLBACKS_JSON: !!js process.env.VISION_FALLBACKS_JSON ?? ''
           VISION_MODEL: !!js process.env.VISION_MODEL ?? ''
           VISION_MODELS: !!js process.env.VISION_MODELS ?? ''
           VISION_BASE_URL: !!js process.env.VISION_BASE_URL ?? ''
+          VISION_SERVICE_ID: !!js process.env.VISION_SERVICE_ID ?? ''
+          VISION_MAX_ATTEMPTS: !!js process.env.VISION_MAX_ATTEMPTS ?? ''
+          VISION_CIRCUIT_COOLDOWN_SECONDS: !!js process.env.VISION_CIRCUIT_COOLDOWN_SECONDS ?? ''
         toolCallTimeoutMs: 180000
         failOnStartupError: false
         reconnect:

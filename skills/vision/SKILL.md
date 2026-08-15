@@ -69,7 +69,7 @@ qwen-vl-plus），再把识别文本返回给主模型。
    compare_images(images=["./a.png", "https://example.com/b.jpg"], prompt="对比两者差异")
    ```
 
-5. 工具返回 JSON：`{"success": true/false, "result": "...", "model": "...", "usage": {...}, "cached": true/false}`。
+5. 工具返回 JSON：`{"success": true/false, "result": "...", "model": "...", "provider": "...", "fallback_used": true/false, "attempts": 0, "usage": {...}, "cached": true/false}`。
    - `success: true`：把 `result` 中的识别文本直接作为回答呈现给用户，
      可适当补充说明（来自哪个模型）；`cached: true` 只表示命中同会话缓存，
      内容仍可正常使用。
@@ -81,7 +81,8 @@ qwen-vl-plus），再把识别文本返回给主模型。
 ## 注意事项
 
 - **不要编造图片内容**：模型看不到图片时，**禁止**凭空描述图片。
-- **限流节奏**：Server 会先自动轮换配置的 Key 与备用模型。只有在工具最终仍返回
+- **限流节奏**：Server 会在全局请求预算内自动退避、轮换 Key/模型并切换已配置的
+  备用服务商，`fallback_used: true` 表示已自动降级。只有在工具最终仍返回
   `VISION_API_ERROR` 且提示限流（429）时，才等待 15~30 秒再调用一次；仍失败则
   如实告知，**不要无限空转**。
 - `image` 参数必须是字符串；URL 必须带 `http(s)://` 前缀；默认拒绝内网 URL

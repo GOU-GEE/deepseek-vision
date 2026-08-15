@@ -35,6 +35,12 @@ DEFAULTS: Dict[str, Any] = {
     "VISION_MODEL": "glm-4.6v-flash",
     # 可选：同一服务商下的模型降级链（逗号分隔）；主模型始终排在第一位。
     "VISION_MODELS": "",
+    # 跨服务商备用链（JSON 数组，不含密钥）。每项通过 api_key_env 指向环境变量。
+    "VISION_FALLBACKS_JSON": "[]",
+    "VISION_FALLBACK_API_KEY": "",
+    # 一次工具调用允许的视觉 API 请求总预算，以及 429 熔断冷却时间。
+    "VISION_MAX_ATTEMPTS": 4,
+    "VISION_CIRCUIT_COOLDOWN_SECONDS": 90,
     # OpenAI 兼容 API 基础 URL（默认指向智谱 AI）
     "VISION_BASE_URL": "https://open.bigmodel.cn/api/paas/v4",
     # 图片大小限制（KB），超过会尝试压缩，压缩后仍超限则报错
@@ -55,6 +61,7 @@ DEFAULTS: Dict[str, Any] = {
     "VISION_CONFIG_FILE": "",
     # 预留：服务商特殊接口格式的扩展名（本版本仅实现 openai_compatible）
     "VISION_PROVIDER": "openai_compatible",
+    "VISION_SERVICE_ID": "primary",
     # 会话内结果缓存（只存哈希与识别文本，不落盘、不保存图片）
     "VISION_CACHE_ENABLED": "true",
     "VISION_CACHE_MAX_ENTRIES": 128,
@@ -91,9 +98,13 @@ class VisionConfig:
     use_config_file: bool
     config_file: Path
     provider: str
+    service_id: str
     cache_enabled: bool
     cache_max_entries: int
     cache_ttl_seconds: int
+    fallback_endpoints: list[dict[str, Any]] = field(default_factory=list)
+    max_attempts: int = 4
+    circuit_cooldown_seconds: int = 90
     # 保留所有原始配置项，便于排查与扩展
     raw: Dict[str, Any] = field(default_factory=dict)
 
@@ -120,6 +131,10 @@ class VisionConfig:
             raise ValueError("VISION_CACHE_MAX_ENTRIES 必须为正整数。")
         if self.cache_ttl_seconds <= 0:
             raise ValueError("VISION_CACHE_TTL_SECONDS 必须为正整数。")
+        if not (1 <= self.max_attempts <= 12):
+            raise ValueError("VISION_MAX_ATTEMPTS 必须在 1 到 12 之间。")
+        if not (5 <= self.circuit_cooldown_seconds <= 3600):
+            raise ValueError("VISION_CIRCUIT_COOLDOWN_SECONDS 必须在 5 到 3600 之间。")
 
 
 def _to_list(value: Any) -> list[str]:
@@ -145,6 +160,37 @@ def _load_config_json(path: Path) -> Dict[str, Any]:
         normalized = key.strip().upper()
         merged[normalized if normalized.startswith("VISION_") else f"VISION_{normalized}"] = value
     return merged
+
+
+def _fallback_endpoints(value: Any, environment: Dict[str, str]) -> list[dict[str, Any]]:
+    if value in (None, "", "[]"):
+        return []
+    try:
+        items = json.loads(value) if isinstance(value, str) else value
+    except json.JSONDecodeError as exc:
+        raise ValueError("VISION_FALLBACKS_JSON 不是有效 JSON") from exc
+    if not isinstance(items, list):
+        raise ValueError("VISION_FALLBACKS_JSON 必须是数组")
+    endpoints: list[dict[str, Any]] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"备用服务 #{index + 1} 必须是对象")
+        model = str(item.get("model", "")).strip()
+        base_url = str(item.get("base_url") or item.get("baseUrl") or "").strip().rstrip("/")
+        credential_env = str(item.get("api_key_env") or item.get("apiKeyEnv") or "").strip()
+        api_key = str(environment.get(credential_env, "")).strip() if credential_env else ""
+        if not model or not base_url or not credential_env:
+            raise ValueError(f"备用服务 #{index + 1} 缺少 model、base_url 或 api_key_env")
+        if not api_key:
+            continue
+        endpoints.append({
+            "id": str(item.get("id") or f"fallback-{index + 1}").strip(),
+            "model": model,
+            "models": _to_list(item.get("models", [])) or [model],
+            "base_url": base_url,
+            "api_key": api_key,
+        })
+    return endpoints
 
 
 def load_config(
@@ -199,6 +245,9 @@ def load_config(
     primary_model = str(merged["VISION_MODEL"]).strip()
     configured_models = _to_list(merged["VISION_MODELS"])
     models = [primary_model, *[m for m in configured_models if m != primary_model]]
+    fallback_endpoints = _fallback_endpoints(
+        merged["VISION_FALLBACKS_JSON"], environment
+    )
 
     cfg = VisionConfig(
         api_key=api_keys[0] if api_keys else "",
@@ -215,9 +264,13 @@ def load_config(
         use_config_file=use_config_file,
         config_file=config_path,
         provider=str(merged["VISION_PROVIDER"]).strip().lower(),
+        service_id=str(merged["VISION_SERVICE_ID"]).strip() or "primary",
         cache_enabled=_to_bool(merged["VISION_CACHE_ENABLED"]),
         cache_max_entries=int(merged["VISION_CACHE_MAX_ENTRIES"]),
         cache_ttl_seconds=int(merged["VISION_CACHE_TTL_SECONDS"]),
+        fallback_endpoints=fallback_endpoints,
+        max_attempts=int(merged["VISION_MAX_ATTEMPTS"]),
+        circuit_cooldown_seconds=int(merged["VISION_CIRCUIT_COOLDOWN_SECONDS"]),
         raw=merged,
     )
     if validate:

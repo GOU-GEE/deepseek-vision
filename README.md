@@ -44,12 +44,12 @@ glm-4.6v-flash）：
    并运行 corepack enable、corepack prepare pnpm@11.7.0 --activate。
 2. 进入 plugins/dsh-plugin-deepseek-vision，运行 npm ci --ignore-scripts、npm test，
    再以可用的 Python 设置 VISION_BUILD_PYTHON 并运行 npm pack；检查 tarball 内含 LICENSE
-   和 runtime/deepseek_vision_mcp-0.2.0-py3-none-any.whl。
+   和 runtime/deepseek_vision_mcp-0.3.0-py3-none-any.whl。
 3. 确认 `/Applications/DeepSeek Harness.app` 存在并读取它的实际 DSH 版本；先让我用
    Cmd+Q 完全退出桌面版，再使用 App 内置的 DSH CLI，把源码构建的 tarball 合并安装到
    默认 `web` profile。不要尝试安装尚未发布的 npm 版本，不覆盖整个 profile。用同一
    CLI 的 `--profile web --dump-config` 确认 deepseek-vision-host、deepseek-vision-mcp
-   和 launcher.mjs 均已加载；若不是 macOS 桌面版，再回退到同版本 npx dsh 命令。
+   和插件内置 launcher.js 均已加载；若不是 macOS 桌面版，再回退到同版本 npx dsh 命令。
 4. 让我重新打开 DeepSeek Harness，进入
    `设置 → 插件 → 插件配置 → DeepSeek Vision`，选择“智谱 GLM（推荐免费）”，确认模型
    自动为 glm-4.6v-flash、Base URL 自动为 https://open.bigmodel.cn/api/paas/v4；让我亲自
@@ -244,7 +244,8 @@ MCP Server 提供 4 个工具：
 （流程图/架构图）、`analyze_chart`（数据图表）、`code_from_screenshot`（代码截图）。
 
 所有工具统一返回 JSON：`{"success": true/false, "result": "...", "model": "...",
-"usage": {...}, "cached": true/false, "error": "..."}`。`cached: true` 表示命中
+"provider": "...", "fallback_used": true/false, "attempts": 0, "usage": {...},
+"cached": true/false, "error": "..."}`。`cached: true` 表示命中
 会话内缓存、未再次消耗视觉 API；失败时 `error` 字段给出错误码
 （`CONFIG_ERROR` / `IMAGE_LOAD_FAILED` / `IMAGE_TOO_LARGE` / `VISION_API_ERROR` /
 `CLIPBOARD_ERROR` / `INVALID_ARGUMENT` / `INTERNAL_ERROR`），`result` 附带可执行的
@@ -369,6 +370,10 @@ pytest -v
 | `VISION_API_KEYS` | | 无 | 多 Key，逗号分隔；429/401/403 时自动轮换，优先于单 Key |
 | `VISION_MODEL` | | `glm-4.6v-flash` | 视觉模型名称（默认推荐智谱免费版） |
 | `VISION_MODELS` | | 无 | 同一服务商下的模型降级链，逗号分隔 |
+| `VISION_FALLBACKS_JSON` | | `[]` | 跨服务商备用链（JSON，不含 Key；用 `api_key_env` 引用凭据环境变量） |
+| `VISION_FALLBACK_API_KEY` | | 无 | DSH 可视化备用服务使用的独立 Key |
+| `VISION_MAX_ATTEMPTS` | | `4` | 单次工具调用的真实视觉 API 请求总预算（1-12） |
+| `VISION_CIRCUIT_COOLDOWN_SECONDS` | | `90` | 429/5xx 端点的短期熔断秒数（5-3600） |
 | `VISION_BASE_URL` | | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 API 基础 URL |
 | `VISION_MAX_IMAGE_SIZE_KB` | | `2048` | 图片大小限制（KB），超限自动压缩 |
 | `VISION_TIMEOUT_SECONDS` | | `60` | 调用视觉模型 API 的超时（秒） |
@@ -402,6 +407,13 @@ pytest -v
 键名大小写不敏感（`api_key` 与 `API_KEY` 等价），也可以直接写扁平形式
 （`VISION_API_KEY`）。环境变量 / `.env` 始终优先于 `config.json`。
 
+跨服务商备用示例（Key 不写进 JSON）：
+
+```bash
+VISION_FALLBACK_API_KEY='你的硅基流动Key'
+VISION_FALLBACKS_JSON='[{"id":"siliconflow","model":"Qwen/Qwen2.5-VL-7B-Instruct","base_url":"https://api.siliconflow.cn/v1","api_key_env":"VISION_FALLBACK_API_KEY"}]'
+```
+
 ### 切换服务商示例
 
 **切到硅基流动：**
@@ -434,15 +446,16 @@ DeepSeek Harness（2026-08-13 发布，目前处于 Developer Preview）原生�
 
 ```bash
 export VISION_API_KEY='你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.2.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.0
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
 插件首次启动时会在 `$DSH_HOME/cache` 自动准备隔离 Python 环境并启动 MCP，
 无需克隆本仓库、手工建立虚拟环境、修改 Python 绝对路径或复制 Skill。选择文本版
 DeepSeek 后可直接粘贴或拖入图片；插件把图片安全保存为临时文件，并在输入框插入明确的
-视觉工具调用指令。Node.js 要求 `22.19+` 或 `24+`，需启用 Corepack/pnpm；Python
-要求 `3.10+`。
+视觉工具调用指令。桌面运行直接复用 DSH App 内置 Node，不依赖 GUI 的 PATH，也不要求
+用户另装 Node；如果系统没有 Python 3.10+，插件会下载经过固定 SHA-256 校验的官方
+`uv` 引导器，在 `$DSH_HOME/cache` 自动准备隔离 CPython 3.12 和运行环境。
 
 #### macOS 桌面版可视化配置
 
@@ -452,11 +465,14 @@ DeepSeek 后可直接粘贴或拖入图片；插件把图片安全保存为临�
 设置 → 插件 → 插件配置 → DeepSeek Vision
 ```
 
-选择视觉服务商后会自动带入推荐模型和 Base URL；填写 API Key 后可直接“保存”并
-“测试连接”。测试会发送一张 1×1 图片并请求最多 8 tokens，因此会产生一次极小的真实
+选择视觉服务商后会自动带入推荐模型和 Base URL；还可以启用独立的备用服务商和备用
+Key。主服务持续遇到 429/5xx 时，插件在全局请求预算内自动退避并切换备用服务，随后
+对故障端点短暂熔断，避免请求风暴。填写 API Key 后可直接“保存”并分别测试主、备用
+连接。测试会发送一张 1×1 图片并请求最多 8 tokens，因此会产生一次极小的真实
 视觉请求。Key 由 DSH 官方凭据存储保存，页面和普通配置只显示“已配置”，不会回显原文；
 非本机 Base URL 必须使用 HTTPS，且不能在 URL 中夹带账号密码。保存后用 `Cmd+Q` 完全
-退出并重新打开桌面版，使正在运行的 MCP 进程读取新配置。
+退出并重新打开桌面版，使正在运行的 MCP 进程读取新配置。主、备用 Key 分别进入 DSH
+官方凭据存储；普通配置只保存服务商、模型、Base URL 和优先级。
 
 当前已在官方 macOS 桌面版内置的 DSH `0.1.0-rc.5` 实机验证，并在 CI 验证 npm
 公开版本 `0.1.0-rc.6` 的干净 profile 安装（官方未向 npm 发布 `rc.5`，因此 CI 无法
@@ -613,7 +629,8 @@ deepseek-vision-mcp/
 │       ├── providers/
 │       │   ├── __init__.py     # build_provider 分发
 │       │   ├── base.py         # 视觉模型抽象基类（扩展点）
-│       │   └── openai_compatible.py  # OpenAI 兼容实现（多 Key/模型降级/重试）
+│       │   ├── openai_compatible.py  # OpenAI 兼容实现（多 Key/模型降级/重试）
+│       │   └── router.py       # 跨服务商备用链、全局预算与短期熔断
 │       ├── main.py             # 命令行入口（--check / --check-clipboard / --test-image）
 │       └── __main__.py
 ├── skills/
@@ -631,7 +648,7 @@ deepseek-vision-mcp/
 │   └── verify_install.py       # 跨平台 MCP + 真实 API + 缓存验收
 ├── plugins/
 │   └── dsh-plugin-deepseek-vision/  # DSH Bundle（粘贴/拖拽 + 托管 Python runtime）
-├── tests/                      # pytest 测试（89 个用例）
+├── tests/                      # pytest 测试（94 个用例）
 ├── SECURITY.md                # 漏洞报告方式与发布安全清单
 └── .github/workflows/         # Python/Node/官方 DSH 安装测试与 PyPI/npm 发布
 ```
@@ -663,9 +680,11 @@ A：视觉模型 API 调用失败。常见原因：Key 无效、`VISION_BASE_URL
 模型名不存在、余额不足、网络超时。按工具返回的 `result` 中的提示排查。
 
 **Q：免费 API 经常 429 怎么办？**
-A：可用 `VISION_API_KEYS=key-a,key-b` 配置多个 Key 自动轮换，并用
-`VISION_MODELS=glm-4.6v-flash,glm-4v-flash` 配置同一服务商下的备用模型。
-只有全部 Key/模型都不可用时，工具才会返回最终错误。
+A：DSH 用户可在可视化设置中启用另一家备用服务商；主服务持续 429 时会在全局
+请求预算内自动退避、切换并短暂熔断故障端点。命令行用户可用
+`VISION_API_KEYS` / `VISION_MODELS` 配置同服务商降级，或用上面的
+`VISION_FALLBACKS_JSON` 配置跨服务商备用链。请只使用自己合法持有的 Key，遵守
+服务商限流和使用条款。
 
 **Q：缓存会保存我的图片吗？**
 A：不会。默认缓存仅在 MCP Server 进程内存中保存图片内容的 SHA256 哈希与识别文本，

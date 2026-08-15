@@ -12,15 +12,19 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
   虚拟环境或修改 Python 绝对路径。
 - 保留 `analyze_image`、`analyze_clipboard`、`compare_images`、`vision_status`
   四个工具，以及多 Key 轮换、模型降级、缓存和 SSRF 防护。
+- 可视化配置主、备用服务商；429/5xx 自动退避、跨服务商切换并短期熔断，单次工具
+  调用默认最多发出 4 次真实视觉请求。
+- 桌面版直接使用 App 内置 Node；缺少 Python 3.10+ 时自动下载校验后的 uv，并在
+  `$DSH_HOME/cache` 准备隔离 CPython 3.12。
 - 只接管明确选中的文本版 DeepSeek；原生视觉模型继续走 DSH 默认图片链路。
 
 ## 要求
 
 - DeepSeek Harness `0.1.0-rc.5` / `0.1.0-rc.6`（兼容目标：`>=0.1.0-rc.5 <0.2.0`）
-- Node.js `22.19+` 或 `24+`
-- Corepack 已启用的 pnpm `11.7.0+`（`corepack enable`）
-- Python `3.10+`（只用于插件自动管理的隔离运行时）
-- 首次启动能访问 PyPI，以安装 wheel 的依赖
+- 使用 DSH 桌面版时无需另装 Node；从源码构建才需要 Node.js `22.19+` 或 `24+`
+- 从源码安装才需要 Corepack/pnpm；安装已发布的 Bundle 由 DSH 安装器处理
+- 有 Python `3.10+` 时直接复用；没有时插件自动准备隔离 CPython 3.12
+- 首次启动需要访问 GitHub Releases 与 PyPI；后续启动复用本地缓存
 
 ## 安装
 
@@ -28,7 +32,7 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
 
 ```bash
 export VISION_API_KEY='你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.2.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.0
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
@@ -36,11 +40,11 @@ Windows PowerShell：
 
 ```powershell
 $env:VISION_API_KEY = '你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.2.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.0
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
-> `0.2.0` 发布到 npm 前，请在本仓库运行
+> `0.3.0` 发布到 npm 前，请在本仓库运行
 > `VISION_BUILD_PYTHON=python3 npm pack`，再把生成的 `.tgz` 安装进 profile。
 > Bundle 自带同版本 Python wheel，避免前后端版本漂移。
 
@@ -53,9 +57,14 @@ macOS 桌面版安装并重启后，进入：
 ```
 
 选择智谱、硅基流动、通义千问或自定义 OpenAI 兼容服务，页面会联动推荐模型与
-Base URL。填写 Key 后点击“保存”和“测试连接”；保存后用 `Cmd+Q` 完全退出并重新打开
-DSH，让 MCP 进程读取新配置。Key 存入 DSH 官方凭据存储，页面只显示配置状态且不会
-回显原文。测试连接会发送一张 1×1 图片并请求最多 8 tokens。
+Base URL。可启用第二家备用服务，并单独填写、测试备用 Key。保存后用 `Cmd+Q` 完全
+退出并重新打开 DSH，让 MCP 进程读取新配置。两个 Key 分别存入 DSH 官方凭据存储，
+页面只显示配置状态且不会回显原文。测试连接会发送一张 1×1 图片并请求最多 8 tokens。
+
+运行时默认采用 4 次全局请求预算：单个端点至多重试一次，然后尝试备用 Key、模型或
+备用服务商；429/5xx 端点默认熔断 90 秒。工具结果中的 `provider`、`fallback_used` 和
+`attempts` 会说明实际走了哪条链路。可用 `VISION_MAX_ATTEMPTS`（1-12）与
+`VISION_CIRCUIT_COOLDOWN_SECONDS`（5-3600）调整。
 
 默认值：
 

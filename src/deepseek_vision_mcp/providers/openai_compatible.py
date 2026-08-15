@@ -11,7 +11,7 @@
 即可切换服务商，无需改代码。
 
 健壮性设计（借鉴 image-vision-mcp / staticdeng）：
-- 客户端内置重试（429/5xx/连接错误，指数退避，默认 2 次）
+- 全局请求预算内重试（429/5xx/连接错误，Retry-After + 指数退避）
 - 输出被 ``max_tokens`` 截断（``finish_reason=="length"``）时自动升档重试
 - 空内容诊断：区分「被截断」与「推理模型只返回了 reasoning_content」
 - 错误按 HTTP 状态码附中文修复指引，让主模型能直接转述给用户
@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import time
 from typing import Any, Dict, List, Optional
 
@@ -33,8 +34,9 @@ logger = logging.getLogger("deepseek_vision_mcp")
 # 输出 token 升档步进：被截断时逐档放大重试
 TOKEN_STEPS = [2048, 4096, 8192, 16384]
 
-# 客户端内置重试次数（429/5xx/连接错误，指数退避）
-CLIENT_MAX_RETRIES = 2
+# 重试由本模块的共享请求预算统一管理，避免 SDK 重试与 Key/模型/服务商循环叠加。
+CLIENT_MAX_RETRIES = 0
+RETRIES_PER_CANDIDATE = 1
 
 # HTTP 状态码 → 中文修复指引
 _STATUS_HINTS: Dict[int, str] = {
@@ -56,6 +58,36 @@ _UNTRUSTED_IMAGE_POLICY = (
 # 这些错误适合切换 Key 或模型；400 等确定性参数错误则立即返回，避免无效请求风暴。
 _ROTATE_KEY_STATUSES = {401, 403, 429}
 _FALLBACK_MODEL_STATUSES = {404, 429, 500, 502, 503, 504}
+_RETRY_STATUSES = {429, 500, 502, 503, 504}
+
+
+class AttemptBudget:
+    """一次 MCP 工具调用共享的真实 API 请求预算。"""
+
+    def __init__(self, maximum: int = 4) -> None:
+        self.maximum = maximum
+        self.attempts = 0
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.maximum - self.attempts)
+
+    def consume(self) -> None:
+        if self.remaining <= 0:
+            raise VisionProviderError(f"已达到全局重试上限（{self.maximum} 次请求）")
+        self.attempts += 1
+
+
+def _retry_after_seconds(exc: Exception, retry_index: int) -> float:
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", {}) or {}
+    raw_ms = headers.get("retry-after-ms") if hasattr(headers, "get") else None
+    raw = headers.get("retry-after") if hasattr(headers, "get") else None
+    try:
+        requested = float(raw_ms) / 1000 if raw_ms is not None else float(raw)
+    except (TypeError, ValueError):
+        requested = 0.5 * (2**retry_index)
+    return min(5.0, max(0.1, requested) + random.uniform(0.0, 0.25))
 
 
 def _status_hint(exc: Exception) -> str:
@@ -82,6 +114,7 @@ class OpenAICompatibleProvider(BaseVisionProvider):
         temperature: float = 0.3,
         api_keys: Optional[List[str]] = None,
         models: Optional[List[str]] = None,
+        attempt_budget: Optional[AttemptBudget] = None,
     ) -> None:
         self.api_keys = list(dict.fromkeys(api_keys or [api_key]))
         self.api_key = self.api_keys[0]
@@ -92,6 +125,7 @@ class OpenAICompatibleProvider(BaseVisionProvider):
         self.base_url = base_url
         self.timeout_seconds = timeout_seconds
         self.temperature = temperature
+        self.attempt_budget = attempt_budget or AttemptBudget()
         # 某些网关要求 Authorization 为 "Bearer <key>"，openai 客户端默认即如此。
         self._clients = [
             OpenAI(
@@ -179,12 +213,36 @@ class OpenAICompatibleProvider(BaseVisionProvider):
 
         for max_tokens in TOKEN_STEPS:
             last_max_tokens = max_tokens
-            response = client.chat.completions.create(
-                model=model,
-                messages=self._build_messages(image_data_uris, prompt),
-                max_tokens=max_tokens,
-                temperature=self.temperature,
-            )
+            response = None
+            for retry_index in range(RETRIES_PER_CANDIDATE + 1):
+                self.attempt_budget.consume()
+                try:
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=self._build_messages(image_data_uris, prompt),
+                        max_tokens=max_tokens,
+                        temperature=self.temperature,
+                    )
+                    break
+                except Exception as exc:
+                    status = getattr(exc, "status_code", None)
+                    retryable = status in _RETRY_STATUSES or isinstance(
+                        exc, (openai.APITimeoutError, openai.APIConnectionError)
+                    )
+                    if (
+                        not retryable
+                        or retry_index >= RETRIES_PER_CANDIDATE
+                        or self.attempt_budget.remaining <= 0
+                    ):
+                        raise
+                    delay = _retry_after_seconds(exc, retry_index)
+                    logger.warning(
+                        "视觉请求失败（HTTP %s），%.2f 秒后重试（总预算剩余 %d）",
+                        status,
+                        delay,
+                        self.attempt_budget.remaining,
+                    )
+                    time.sleep(delay)
 
             last_response = response
             try:
@@ -260,17 +318,21 @@ class OpenAICompatibleProvider(BaseVisionProvider):
 
                     hint = _status_hint(exc)
                     detail = self._safe_error_text(exc)
-                    raise VisionProviderError(
+                    wrapped = VisionProviderError(
                         f"调用视觉模型失败（model={model}, base_url={self.base_url}）："
                         f"{detail}{' ' + hint if hint else ''}"
-                    ) from exc
+                    )
+                    wrapped.status_code = status  # type: ignore[attr-defined]
+                    raise wrapped from exc
 
         detail = self._safe_error_text(last_exc) if last_exc else "未知错误"
         hint = _status_hint(last_exc) if last_exc else ""
-        raise VisionProviderError(
+        wrapped = VisionProviderError(
             f"所有 Key/模型均调用失败（最后模型={last_model}, base_url={self.base_url}）："
             f"{detail}{' ' + hint if hint else ''}"
-        ) from last_exc
+        )
+        wrapped.status_code = getattr(last_exc, "status_code", None)  # type: ignore[attr-defined]
+        raise wrapped from last_exc
 
     def close(self) -> None:
         for client in self._clients:

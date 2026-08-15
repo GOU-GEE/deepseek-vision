@@ -9,10 +9,12 @@ import pytest
 from openai import AuthenticationError
 
 from deepseek_vision_mcp.providers import build_provider
+from deepseek_vision_mcp.providers import router as router_module
 from deepseek_vision_mcp.providers.base import VisionProviderError
 from deepseek_vision_mcp.providers.openai_compatible import (
     OpenAICompatibleProvider,
 )
+from deepseek_vision_mcp.providers.router import FallbackVisionProvider
 
 DATA_URI = "data:image/jpeg;base64,AAAA"
 
@@ -48,7 +50,7 @@ class TestOpenAICompatibleProvider:
 
         # 客户端按预期参数构造
         m_openai.assert_called_once_with(
-            api_key="k", base_url="https://x/v4", timeout=60, max_retries=2
+            api_key="k", base_url="https://x/v4", timeout=60, max_retries=0
         )
         call_kwargs = fake_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["model"] == "glm-4.6v-flash"
@@ -285,9 +287,9 @@ class TestProviderSwitch:
                 timeout_seconds=60,
             )
         )
-        assert isinstance(provider, OpenAICompatibleProvider)
-        assert provider.model == "glm-4.6v-flash"
-        assert provider.base_url == "https://open.bigmodel.cn/api/paas/v4"
+        assert isinstance(provider, FallbackVisionProvider)
+        assert provider.providers[0].model == "glm-4.6v-flash"
+        assert provider.providers[0].base_url == "https://open.bigmodel.cn/api/paas/v4"
 
     def test_build_provider_siliconflow(self):
         provider = build_provider(
@@ -299,8 +301,8 @@ class TestProviderSwitch:
                 timeout_seconds=60,
             )
         )
-        assert provider.base_url == "https://api.siliconflow.cn/v1"
-        assert provider.model == "Qwen/Qwen2.5-VL-7B-Instruct"
+        assert provider.providers[0].base_url == "https://api.siliconflow.cn/v1"
+        assert provider.providers[0].model == "Qwen/Qwen2.5-VL-7B-Instruct"
 
     def test_build_provider_dashscope(self):
         provider = build_provider(
@@ -312,8 +314,8 @@ class TestProviderSwitch:
                 timeout_seconds=60,
             )
         )
-        assert provider.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        assert provider.model == "qwen-vl-plus"
+        assert provider.providers[0].base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        assert provider.providers[0].model == "qwen-vl-plus"
 
     def test_build_provider_openai_alias(self):
         provider = build_provider(
@@ -325,7 +327,133 @@ class TestProviderSwitch:
                 timeout_seconds=60,
             )
         )
-        assert isinstance(provider, OpenAICompatibleProvider)
+        assert isinstance(provider, FallbackVisionProvider)
+
+    def test_cross_provider_fallback_reports_observability(self):
+        router_module._CIRCUITS.clear()
+        primary = mock.Mock()
+        primary.chat.completions.create.side_effect = FakeAPIError(429, "busy")
+        backup = mock.Mock()
+        backup.chat.completions.create.return_value = _mock_response(model="backup-vl")
+        config = SimpleNamespace(
+            provider="openai_compatible",
+            service_id="zhipu",
+            api_key="z-key",
+            api_keys=["z-key"],
+            model="glm-4.6v-flash",
+            models=["glm-4.6v-flash"],
+            base_url="https://z.example/v1",
+            timeout_seconds=60,
+            temperature=0.3,
+            max_attempts=4,
+            circuit_cooldown_seconds=90,
+            fallback_endpoints=[{
+                "id": "siliconflow",
+                "api_key": "s-key",
+                "model": "backup-vl",
+                "models": ["backup-vl"],
+                "base_url": "https://s.example/v1",
+            }],
+        )
+        with (
+            mock.patch(
+                "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+                side_effect=[primary, backup],
+            ),
+            mock.patch("deepseek_vision_mcp.providers.openai_compatible.time.sleep"),
+        ):
+            result = build_provider(config).analyze(DATA_URI, "p")
+        assert result["provider"] == "siliconflow"
+        assert result["fallback_used"] is True
+        assert result["attempts"] == 3
+
+    def test_cross_provider_chain_never_exceeds_global_request_budget(self):
+        router_module._CIRCUITS.clear()
+        primary = mock.Mock()
+        primary.chat.completions.create.side_effect = FakeAPIError(429, "busy")
+        backup = mock.Mock()
+        backup.chat.completions.create.side_effect = FakeAPIError(429, "busy")
+        config = SimpleNamespace(
+            provider="openai_compatible",
+            service_id="budget-primary",
+            api_key="p-key",
+            api_keys=["p-key"],
+            model="primary-vl",
+            models=["primary-vl"],
+            base_url="https://budget-primary.example/v1",
+            timeout_seconds=60,
+            temperature=0.3,
+            max_attempts=4,
+            circuit_cooldown_seconds=90,
+            fallback_endpoints=[{
+                "id": "budget-backup",
+                "api_key": "b-key",
+                "model": "backup-vl",
+                "models": ["backup-vl"],
+                "base_url": "https://budget-backup.example/v1",
+            }],
+        )
+        with (
+            mock.patch(
+                "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+                side_effect=[primary, backup],
+            ),
+            mock.patch("deepseek_vision_mcp.providers.openai_compatible.time.sleep"),
+        ):
+            with pytest.raises(VisionProviderError, match="已请求 4/4 次"):
+                build_provider(config).analyze(DATA_URI, "p")
+        assert primary.chat.completions.create.call_count == 2
+        assert backup.chat.completions.create.call_count == 2
+
+    def test_circuit_skips_failed_primary_when_fallback_exists(self):
+        router_module._CIRCUITS.clear()
+        primary_first = mock.Mock()
+        primary_first.chat.completions.create.side_effect = FakeAPIError(429, "busy")
+        backup_first = mock.Mock()
+        backup_first.chat.completions.create.return_value = _mock_response()
+        primary_second = mock.Mock()
+        backup_second = mock.Mock()
+        backup_second.chat.completions.create.return_value = _mock_response()
+        config = SimpleNamespace(
+            provider="openai_compatible",
+            service_id="circuit-primary",
+            api_key="p-key",
+            api_keys=["p-key"],
+            model="primary-vl",
+            models=["primary-vl"],
+            base_url="https://circuit-primary.example/v1",
+            timeout_seconds=60,
+            temperature=0.3,
+            max_attempts=4,
+            circuit_cooldown_seconds=90,
+            fallback_endpoints=[{
+                "id": "circuit-backup",
+                "api_key": "b-key",
+                "model": "backup-vl",
+                "models": ["backup-vl"],
+                "base_url": "https://circuit-backup.example/v1",
+            }],
+        )
+        with (
+            mock.patch(
+                "deepseek_vision_mcp.providers.openai_compatible.OpenAI",
+                side_effect=[
+                    primary_first,
+                    backup_first,
+                    primary_second,
+                    backup_second,
+                ],
+            ),
+            mock.patch("deepseek_vision_mcp.providers.openai_compatible.time.sleep"),
+        ):
+            first = build_provider(config).analyze(DATA_URI, "p")
+            second = build_provider(config).analyze(DATA_URI, "p")
+        assert first["fallback_used"] is True
+        assert second["fallback_used"] is True
+        assert second["attempts"] == 1
+        assert primary_first.chat.completions.create.call_count == 2
+        primary_second.chat.completions.create.assert_not_called()
+        backup_second.chat.completions.create.assert_called_once()
 
     def test_unknown_provider_raises(self):
         with pytest.raises(VisionProviderError, match="未知的提供商"):
