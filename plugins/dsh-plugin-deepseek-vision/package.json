@@ -1,0 +1,43 @@
+{
+  "name": "dsh-plugin-deepseek-vision",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 视觉插件：通过 deepseek-vision-mcp（OpenAI 兼容视觉模型，默认智谱免费 glm-4.6v-flash）让 DeepSeek 等纯文本模型获得图片理解能力，含 vision Skill（自动触发）。",
+  "type": "module",
+  "files": [
+    "cordis.patch.yml",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "mcp",
+    "vision",
+    "image-analysis",
+    "ocr",
+    "glm",
+    "glm-4.6v-flash",
+    "deepseek"
+  ],
+  "license": "MIT",
+  "author": "deepseek-vision-mcp contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GOU-GEE/deepseek-vision.git"
+  },
+  "homepage": "https://github.com/GOU-GEE/deepseek-vision#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

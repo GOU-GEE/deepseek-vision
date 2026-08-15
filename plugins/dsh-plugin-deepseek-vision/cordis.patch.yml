@@ -1,0 +1,36 @@
+# dsh-plugin-deepseek-vision bundle patch
+#
+# 把 deepseek-vision MCP Server 注册进 DSH 组合层：
+#   1. 通过官方 @deepseek-ai/dsh-mcp-client 连接我们的 MCP Server
+#      （工具将以 mcp__deepseek-vision__analyze_image 等形式暴露给模型）
+#   2. （可选）通过 dsh-skill-filesystem 挂载 vision Skill 目录
+#      ——默认不启用，推荐直接用 README 里的一行命令复制 skills 到 ~/.dsh/skills
+#
+# 安装方式：
+#   dsh plugin --profile web add dsh-plugin-deepseek-vision
+#
+# 注意：command 请替换为 deepseek-vision-mcp 虚拟环境中 python 的绝对路径；
+#       API Key 建议通过 DSH 环境（process.env）注入，不要写死在配置里。
+
+- insert:
+    - id: deepseek-vision
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: deepseek-vision
+        transport: stdio
+        command: python
+        args: ['-m', 'deepseek_vision_mcp']
+        env:
+          VISION_API_KEY: !!js process.env.VISION_API_KEY
+          VISION_MODEL: glm-4.6v-flash
+          VISION_BASE_URL: https://open.bigmodel.cn/api/paas/v4
+
+    # --- 可选：挂载本包自带的 vision Skill -------------------------------
+    # 用法：把 <plugin-dir> 换成实际安装目录（$DSH_HOME/profiles/web/node_modules/
+    #       dsh-plugin-deepseek-vision/），取消注释即可；或用一行命令复制：
+    #       cp -r skills/vision "$DSH_HOME/skills/"  （$DSH_HOME 默认 ~/.dsh）
+    # - id: dsh-skill-filesystem
+    #   name: '@deepseek-ai/dsh-skill-filesystem'
+    #   config:
+    #     customSkillDirs:
+    #       - <plugin-dir>/skills

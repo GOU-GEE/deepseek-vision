@@ -412,51 +412,90 @@ VISION_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
 ## 与 DeepSeek Harness 集成
 
-DeepSeek Harness（以及其他支持 MCP 的智能体平台）通过「MCP 服务器配置 +
-Skill 目录」两个入口接入本项目。
+DeepSeek Harness（2025-08-13 版本起）原生支持 **MCP 服务器**（内置
+`@deepseek-ai/dsh-mcp-client` 插件），也支持 **Skill 目录**（内置
+`@deepseek-ai/dsh-skill-filesystem`）。本项目两者兼备：MCP Server 提供
+`analyze_image` 等 4 个工具，`skills/vision/SKILL.md` 负责自动触发。
+推荐以下两种方式之一。
 
-### 方式一：在 Harness 中注册 MCP Server
+### 方式一（推荐）：安装官方形态插件，一行命令
 
-在 Harness 的配置文件中加入：
-
-```json
-{
-  "mcp_servers": [
-    {
-      "name": "deepseek-vision",
-      "command": "python",
-      "args": ["-m", "deepseek_vision_mcp"],
-      "env": {
-        "VISION_API_KEY": "your-api-key",
-        "VISION_MODEL": "glm-4.6v-flash",
-        "VISION_BASE_URL": "https://open.bigmodel.cn/api/paas/v4"
-      }
-    }
-  ]
-}
+```bash
+dsh plugin --profile web add dsh-plugin-deepseek-vision
 ```
 
-> 如果你的 `python` 不在 PATH 中，请换成虚拟环境中 Python 的绝对路径：
-> Mac/Linux 为 `/path/to/.venv/bin/python`，Windows 为 `C:/path/to/.venv/Scripts/python.exe`
-> （Windows 路径可用正斜杠，避免 JSON 转义问题）。建议使用虚拟环境中的 Python，
-> 确保安装了本项目的依赖。
+装完把 `command` 改成 deepseek-vision 虚拟环境 Python 的绝对路径，
+并复制 Skill 到用户根目录（复制后 DSH 自动热加载）：
 
-### 方式二：加载 Skill 目录
+```bash
+cp -r plugins/dsh-plugin-deepseek-vision/skills/vision ~/.dsh/skills/
+```
 
-将本仓库的 `skills/` 目录加入 Harness 的 Skill 搜索路径（或把
-`skills/vision/SKILL.md` 复制到 Harness 的 skills 目录）。加载后，
-主模型在遇到图片时会自动触发 `vision` Skill，进而调用 `analyze_image` 工具。
+> 包内自带完整说明与等效的手写配置（`plugins/dsh-plugin-deepseek-vision/README.md`）。
+> 本包采用 bundle patch 形态，插入的 `dsh-mcp-client` / `dsh-skill-filesystem`
+> 均为 DSH 内置组件（已验证路径）。
 
-### 方式三：不支持 Skill 时——通过系统提示词手动触发
+### 方式二：手写 cordis.patch.yml（不装插件，等效）
 
-如果你的 Harness 版本不支持 Skill，把以下内容追加到系统提示词中即可获得
-同样的自动触发效果：
+在 profile 的 `cordis.patch.yml` 中加入一个 `dsh-mcp-client` 插件实例：
+
+```yaml
+- insert:
+    - id: deepseek-vision
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: deepseek-vision
+        transport: stdio
+        command: /abs/path/to/deepseek-vision/.venv/bin/python
+        args: ['-m', 'deepseek_vision_mcp']
+        env:
+          VISION_API_KEY: !!js process.env.VISION_API_KEY
+          VISION_MODEL: glm-4.6v-flash
+          VISION_BASE_URL: https://open.bigmodel.cn/api/paas/v4
+```
+
+工具将以 `mcp__deepseek-vision__analyze_image`、
+`mcp__deepseek-vision__analyze_clipboard`、
+`mcp__deepseek-vision__compare_images`、
+`mcp__deepseek-vision__vision_status` 的名字暴露给模型（与 Claude Code /
+Codex 相同的 server 限定命名）。`command` 必须使用虚拟环境 Python 的
+绝对路径；API Key 走 DSH 环境变量或项目 `.env` 均可。
+
+### 加载 Skill（自动触发）
+
+DSH 通过 `dsh-skill-filesystem` 扫描 `~/.dsh/skills/`（`$DSH_HOME/skills`），
+把本仓库的 Skill 复制进去即可（DSH 自动热加载，无需重启）：
+
+```bash
+mkdir -p ~/.dsh/skills && cp -r skills/vision ~/.dsh/skills/
+```
+
+加载后，用户发送图片/路径/URL、粘贴截图、或要求「看图/OCR/对比图片」时，
+模型命中 `vision` Skill 自动调用工具。
+
+### 不支持 Skill 时——通过系统提示词手动触发
+
+把以下内容追加到系统提示词中即可获得同样的自动触发效果：
 
 ```text
 当用户发送图片路径、图片 URL、base64 图片，或要求识别/理解/描述图片内容时，
 你必须调用 MCP 工具 analyze_image(image="<图片输入>", prompt="<针对用户问题的任务描述>")，
 并根据工具返回的 result 字段回答用户。不要编造图片内容。
 ```
+
+### 插件生态说明（能否作为插件发布 / 是否需要审核）
+
+- **DSH 插件 = 普通 npm 包**：框架要求插件是导出 `apply(ctx)` 的 TypeScript
+  模块（Cordis 插件），或声明 `dsh.bundle.patch` 组合层、`dsh.skills`、
+  `dsh.mcpServers` 等能力面的包。官方文档见
+  <https://github.com/deepseek-ai/deepseek-harness/tree/master/docs/user/develop>。
+- **无需官方审核**：2025-08-11 起官方删除了旧的 repository-plugins 机制，
+  插件生态是开放的——任何人发布 npm 包（`publishConfig.access: public`），
+  用户用 `dsh plugin --profile web add <包名>` 安装即可。没有上架审核流程；
+  社区基建（如 vlln/plugin-registry）只提供管理面板与开发引导，非审核门。
+- **发布注意**：npm 包名全局唯一；`dsh` 字段是严格能力面声明（不要发明
+  竞争格式）；`dsh.mcpServers` 的确切 schema 以当前官方 spec 为准，发布前
+  用 `dsh --dump-config` 验证；给仓库打 `dsh`/`vision`/`mcp` 等 topic 便于搜索。
 
 ### 验证集成
 
@@ -467,6 +506,7 @@ Skill 目录」两个入口接入本项目。
 ```
 
 如果配置正确，你应该看到模型先调用 `analyze_image` 工具，再基于返回结果回答。
+也可以直接问「看看我刚复制的截图」测试剪贴板工具（`analyze_clipboard`）。
 
 ---
 
@@ -561,6 +601,8 @@ deepseek-vision-mcp/
 │   ├── install.sh
 │   ├── test_mcp.sh             # Mac/Linux 完整验收包装脚本
 │   └── verify_install.py       # 跨平台 MCP + 真实 API + 缓存验收
+├── plugins/
+│   └── dsh-plugin-deepseek-vision/  # DSH 插件包装包（bundle patch + Skill）
 ├── tests/                      # pytest 测试（88 个用例）
 ├── SECURITY.md                # 漏洞报告方式与发布安全清单
 └── .github/workflows/         # 测试、MCP 1.x/2.x 兼容与 PyPI 发布
