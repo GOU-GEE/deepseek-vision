@@ -458,9 +458,9 @@ DeepSeek 后可直接粘贴或拖入图片；插件把图片安全保存为临�
 非本机 Base URL 必须使用 HTTPS，且不能在 URL 中夹带账号密码。保存后用 `Cmd+Q` 完全
 退出并重新打开桌面版，使正在运行的 MCP 进程读取新配置。
 
-当前已在官方 macOS 桌面版 `0.1.0-rc.5` 实机验证，并在 CI 同时验证 DSH
-`0.1.0-rc.5` / `0.1.0-rc.6` 的干净 profile 安装。DSH 仍处于预览期，升级后应重新
-执行一次连接和图片验收。
+当前已在官方 macOS 桌面版内置的 DSH `0.1.0-rc.5` 实机验证，并在 CI 验证 npm
+公开版本 `0.1.0-rc.6` 的干净 profile 安装（官方未向 npm 发布 `rc.5`，因此 CI 无法
+在线安装该版本）。DSH 仍处于预览期，升级后应重新执行一次连接和图片验收。
 
 > 包内自带完整说明与等效的手写配置（`plugins/dsh-plugin-deepseek-vision/README.md`）。
 > 本包采用 bundle patch 形态并使用 DSH 内置 `dsh-mcp-client`。当前 npm 版本发布前，

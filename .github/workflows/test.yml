@@ -169,17 +169,14 @@ jobs:
 
       - name: Install bundle into an isolated official DSH profile
         run: |
+          export DSH_HOME="$RUNNER_TEMP/dsh-home"
           TARBALL="$GITHUB_WORKSPACE/plugins/dsh-plugin-deepseek-vision/dsh-plugin-deepseek-vision-0.2.0.tgz"
-          for VERSION in 0.1.0-rc.5 0.1.0-rc.6; do
-            export DSH_HOME="$RUNNER_TEMP/dsh-home-$VERSION"
-            CONFIG="$RUNNER_TEMP/dsh-config-$VERSION.txt"
-            npx -y "@deepseek-ai/dsh@$VERSION" plugin --profile web add "$TARBALL"
-            npx -y "@deepseek-ai/dsh@$VERSION" --profile web --dump-config > "$CONFIG"
-            grep -q 'deepseek-vision-host' "$CONFIG"
-            grep -q 'deepseek-vision-mcp' "$CONFIG"
-            grep -q 'deepseek-vision-mcp/launcher.mjs' "$CONFIG"
-            grep -q 'DSH_HOME:' "$CONFIG"
-          done
+          npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add "$TARBALL"
+          npx -y @deepseek-ai/dsh@0.1.0-rc.6 --profile web --dump-config > "$RUNNER_TEMP/dsh-config.txt"
+          grep -q 'deepseek-vision-host' "$RUNNER_TEMP/dsh-config.txt"
+          grep -q 'deepseek-vision-mcp' "$RUNNER_TEMP/dsh-config.txt"
+          grep -q 'deepseek-vision-mcp/launcher.mjs' "$RUNNER_TEMP/dsh-config.txt"
+          grep -q 'DSH_HOME:' "$RUNNER_TEMP/dsh-config.txt"
 
       - name: Validate DSH manifest and composition
         run: |
