@@ -1,10 +1,25 @@
 {
   "name": "dsh-plugin-deepseek-vision",
-  "version": "0.1.0",
-  "description": "DeepSeek Harness 视觉插件：通过 deepseek-vision-mcp（OpenAI 兼容视觉模型，默认智谱免费 glm-4.6v-flash）让 DeepSeek 等纯文本模型获得图片理解能力，含 vision Skill（自动触发）。",
+  "version": "0.2.0",
+  "description": "DeepSeek Harness 原生视觉 Bundle：粘贴或拖入图片，通过托管的 deepseek-vision-mcp 调用 OpenAI 兼容视觉模型。",
   "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./launcher": "./launcher.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "deepseek-vision-dsh-runtime": "./launcher.js"
+  },
   "files": [
+    "index.js",
+    "client.js",
+    "launcher.js",
     "cordis.patch.yml",
+    "runtime/*.whl",
     "skills",
     "README.md",
     "LICENSE"
@@ -12,7 +27,17 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web",
+      "immediately": true
     }
+  },
+  "scripts": {
+    "prepare:runtime": "node ./scripts/prepare-runtime.mjs",
+    "prepack": "npm run prepare:runtime",
+    "test": "node --test ./tests/*.test.js"
   },
   "keywords": [
     "deepseek-harness",
@@ -23,21 +48,34 @@
     "vision",
     "image-analysis",
     "ocr",
-    "glm",
-    "glm-4.6v-flash",
-    "deepseek"
+    "glm-4.6v-flash"
   ],
   "license": "MIT",
   "author": "deepseek-vision-mcp contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/GOU-GEE/deepseek-vision.git"
+    "url": "git+https://github.com/GOU-GEE/deepseek-vision.git",
+    "directory": "plugins/dsh-plugin-deepseek-vision"
   },
   "homepage": "https://github.com/GOU-GEE/deepseek-vision#readme",
+  "bugs": {
+    "url": "https://github.com/GOU-GEE/deepseek-vision/issues"
+  },
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
   "engines": {
-    "node": ">=20"
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.1.0-rc.6 <0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
   }
 }

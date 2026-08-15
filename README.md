@@ -20,11 +20,9 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 
 ## 🚀 一句话安装（复制给 AI 助手，免手动操作）
 
-在 DeepSeek Harness / Codex 等智能体平台中，**把下面任一段话复制发给你的 AI 助手**，
-它会自动完成：克隆仓库 → 检查并准备 Python 环境 → 安装依赖 → 配置 API Key →
-注册 MCP 服务器 → 加载 Skill → 自测图片识别。全程无需你手动敲命令。
-（现在的大模型助手已经足够聪明，**推荐直接用下面的「极简版」**；需要更明确的
-步骤指引时再用「完整版」，效果相同。）
+主要在 DeepSeek Harness 中使用时，复制下面的推荐提示词给助手。它会从全新克隆构建
+本仓库的 DSH Bundle、安装到 Web profile、完成自动托管 Python 与真实图片验收。
+其他 MCP 客户端请使用后面的通用版。
 
 > **关于 API Key（请先读）**：
 > - ✅ 默认方案使用智谱 `glm-4.6v-flash`：把提示词中的 `YOUR_ZHIPU_FREE_API_KEY`
@@ -34,24 +32,32 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 > - 🔒 **付费 Key 请勿明文发给 AI 助手**：删掉提示词里的 Key 占位行，助手会引导你
 >   自己填写 `.env`，Key 只保存在你本机，不会经过对话。
 
-**极简版（推荐，一会话从零部署并验收）**——助手足够聪明，这段就够：
+**DeepSeek Harness 推荐版（一会话从零部署并验收）**：
 
 ```text
-请在一个会话内从零安装并验收 https://github.com/GOU-GEE/deepseek-vision，让我的
-DeepSeek 获得视觉能力（默认智谱免费模型 glm-4.6v-flash）：在一个全新的、不复用旧
-仓库或旧虚拟环境的目录中克隆 main → 建 .venv → pip install -e . → 配置 API Key
-（下面给了智谱免费 Key 就写入新目录的 .env；没给就复制 .env.example 并暂停，让我自己填
-VISION_API_KEY，不要索取付费 Key 明文）→ 用 .venv 的 Python 运行
-scripts/verify_install.py，必须实际完成 MCP stdio 握手、vision_status、一次真实识图和
-第二次 cached=true 验收 → 把这个新 .venv 的 Python 绝对路径注册为 deepseek-vision
-MCP（args 为 ["-m","deepseek_vision_mcp"]）→ 加载 skills/vision/SKILL.md。若当前
-Harness 会话不能热加载新 MCP，明确提示我重启/新建会话后发一张图做自动触发终验。
-任何一步失败立即停止并展示完整错误；不要复用旧安装来假装通过，也不要删除旧安装。
+请在一个会话内从零安装并验收 https://github.com/GOU-GEE/deepseek-vision 的 DSH
+插件，让文本版 DeepSeek 获得视觉能力（默认智谱免费模型 glm-4.6v-flash）：
+1. 在全新的、不复用旧仓库或虚拟环境的目录克隆 main，确认 Node >=22.19、Python >=3.10。
+2. 进入 plugins/dsh-plugin-deepseek-vision，运行 npm ci --ignore-scripts、npm test，
+   再以可用的 Python 设置 VISION_BUILD_PYTHON 并运行 npm pack；检查 tarball 内含 LICENSE
+   和 runtime/deepseek_vision_mcp-0.2.0-py3-none-any.whl。
+3. 用 npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add <tarball绝对路径>
+   安装源码构建的包；不要尝试安装尚未发布的 npm 版本。用同版 dsh --profile web
+   --dump-config 确认 deepseek-vision-host、deepseek-vision-mcp 和 launcher.mjs 均已加载。
+4. API Key 只放在启动 DSH 的 VISION_API_KEY 环境变量，或权限 0600 的
+   $DSH_HOME/.credentials.yaml；不得写进仓库。若下面提供了智谱免费 Key可代为设置；
+   未提供或属于付费 Key就暂停，让我本机填写，不索取明文。
+5. 先从仓库根目录运行 python scripts/verify_dsh_plugin.py，必须通过真实 MCP stdio 握手、
+   4 个工具和 vision_status；然后启动 DSH Web，选择文本版 DeepSeek，把
+   examples/test_image.jpg 粘贴或拖入输入框，确认插件插入 analyze_image 指令、工具实际
+   调用成功，返回 model=glm-4.6v-flash。再发同图同问题，确认 cached=true。
+6. 每一步失败立即停止并展示完整错误；配置只做合并，不覆盖用户原有 DSH profile，
+   不删除旧安装。最后汇报克隆路径、tarball、DSH profile、托管运行时路径及全部验收结果。
 
 [我的智谱免费 API Key（可选；付费 Key 请删掉这一行）: YOUR_ZHIPU_FREE_API_KEY]
 ```
 
-**完整版（步骤更明确）**：
+**其他 MCP 客户端通用版（Claude Code / Codex / OpenCode 等）**：
 
 ```text
 请帮我安装并启用 deepseek-vision-mcp（GitHub: https://github.com/GOU-GEE/deepseek-vision），
@@ -412,28 +418,28 @@ VISION_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
 ## 与 DeepSeek Harness 集成
 
-DeepSeek Harness（2025-08-13 版本起）原生支持 **MCP 服务器**（内置
+DeepSeek Harness（2026-08-13 发布，目前处于 Developer Preview）原生支持 **MCP 服务器**（内置
 `@deepseek-ai/dsh-mcp-client` 插件），也支持 **Skill 目录**（内置
 `@deepseek-ai/dsh-skill-filesystem`）。本项目两者兼备：MCP Server 提供
 `analyze_image` 等 4 个工具，`skills/vision/SKILL.md` 负责自动触发。
 推荐以下两种方式之一。
 
-### 方式一（推荐）：安装官方形态插件，一行命令
+### 方式一（推荐）：安装 DSH Bundle
 
 ```bash
-dsh plugin --profile web add dsh-plugin-deepseek-vision
+export VISION_API_KEY='你的智谱APIKey'
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.2.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
-装完把 `command` 改成 deepseek-vision 虚拟环境 Python 的绝对路径，
-并复制 Skill 到用户根目录（复制后 DSH 自动热加载）：
-
-```bash
-cp -r plugins/dsh-plugin-deepseek-vision/skills/vision ~/.dsh/skills/
-```
+插件首次启动时会在 `$DSH_HOME/cache` 自动准备隔离 Python 环境并启动 MCP，
+无需克隆本仓库、手工建立虚拟环境、修改 Python 绝对路径或复制 Skill。选择文本版
+DeepSeek 后可直接粘贴或拖入图片；插件把图片安全保存为临时文件，并在输入框插入明确的
+视觉工具调用指令。Node.js 要求 `22.19+` 或 `24+`，Python 要求 `3.10+`。
 
 > 包内自带完整说明与等效的手写配置（`plugins/dsh-plugin-deepseek-vision/README.md`）。
-> 本包采用 bundle patch 形态，插入的 `dsh-mcp-client` / `dsh-skill-filesystem`
-> 均为 DSH 内置组件（已验证路径）。
+> 本包采用 bundle patch 形态并使用 DSH 内置 `dsh-mcp-client`。当前 npm 版本发布前，
+> 请从仓库构建 tarball 做本地验收；不要把尚未发布的命令描述成已可公开安装。
 
 ### 方式二：手写 cordis.patch.yml（不装插件，等效）
 
@@ -485,17 +491,14 @@ mkdir -p ~/.dsh/skills && cp -r skills/vision ~/.dsh/skills/
 
 ### 插件生态说明（能否作为插件发布 / 是否需要审核）
 
-- **DSH 插件 = 普通 npm 包**：框架要求插件是导出 `apply(ctx)` 的 TypeScript
-  模块（Cordis 插件），或声明 `dsh.bundle.patch` 组合层、`dsh.skills`、
-  `dsh.mcpServers` 等能力面的包。官方文档见
-  <https://github.com/deepseek-ai/deepseek-harness/tree/master/docs/user/develop>。
-- **无需官方审核**：2025-08-11 起官方删除了旧的 repository-plugins 机制，
-  插件生态是开放的——任何人发布 npm 包（`publishConfig.access: public`），
-  用户用 `dsh plugin --profile web add <包名>` 安装即可。没有上架审核流程；
-  社区基建（如 vlln/plugin-registry）只提供管理面板与开发引导，非审核门。
-- **发布注意**：npm 包名全局唯一；`dsh` 字段是严格能力面声明（不要发明
-  竞争格式）；`dsh.mcpServers` 的确切 schema 以当前官方 spec 为准，发布前
-  用 `dsh --dump-config` 验证；给仓库打 `dsh`/`vision`/`mcp` 等 topic 便于搜索。
+- **DSH Bundle 是普通 npm 包**：本包通过清单中的 `dsh.bundle.patch` 组合宿主插件、
+  DSH 内置 MCP client 和浏览器客户端模块。官方发布文档见
+  <https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md>。
+- **公开安装路径不要求提交官方商店审核**：作者可发布公开 npm 包，用户也可从 npm、
+  GitHub 或本地 tarball 安装。官方当前建议用 GitHub 的 `dsh-plugin` topic 做发现；
+  这不代表 DeepSeek 官方背书或安全审核。
+- **Developer Preview 注意**：当前锁定并测试 `0.1.0-rc.6`；DSH 在 0.2.0 前可能发生
+  破坏性变化。每次发布都必须用干净 profile 执行安装、`--dump-config` 和真实图片验收。
 
 ### 验证集成
 
@@ -602,10 +605,10 @@ deepseek-vision-mcp/
 │   ├── test_mcp.sh             # Mac/Linux 完整验收包装脚本
 │   └── verify_install.py       # 跨平台 MCP + 真实 API + 缓存验收
 ├── plugins/
-│   └── dsh-plugin-deepseek-vision/  # DSH 插件包装包（bundle patch + Skill）
-├── tests/                      # pytest 测试（88 个用例）
+│   └── dsh-plugin-deepseek-vision/  # DSH Bundle（粘贴/拖拽 + 托管 Python runtime）
+├── tests/                      # pytest 测试（89 个用例）
 ├── SECURITY.md                # 漏洞报告方式与发布安全清单
-└── .github/workflows/         # 测试、MCP 1.x/2.x 兼容与 PyPI 发布
+└── .github/workflows/         # Python/Node/官方 DSH 安装测试与 PyPI/npm 发布
 ```
 
 ---

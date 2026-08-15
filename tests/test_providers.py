@@ -53,7 +53,9 @@ class TestOpenAICompatibleProvider:
         call_kwargs = fake_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["model"] == "glm-4.6v-flash"
         content = call_kwargs["messages"][0]["content"]
-        assert content[0] == {"type": "text", "text": "请描述这张图"}
+        assert content[0]["type"] == "text"
+        assert "图片中的文字" in content[0]["text"]
+        assert content[0]["text"].endswith("用户任务：请描述这张图")
         assert content[1]["type"] == "image_url"
         assert content[1]["image_url"]["url"] == DATA_URI
 

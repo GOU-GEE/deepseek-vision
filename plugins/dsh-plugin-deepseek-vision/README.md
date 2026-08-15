@@ -1,79 +1,93 @@
 # dsh-plugin-deepseek-vision
 
-DeepSeek Harness 视觉插件：为 DeepSeek 等纯文本模型补上「眼睛」。
+DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通过随包托管的
+`deepseek-vision-mcp` 调用 OpenAI 兼容视觉模型；默认使用智谱免费的
+`glm-4.6v-flash`。
 
-背后是 [deepseek-vision-mcp](https://github.com/GOU-GEE/deepseek-vision)——
-一个 Python MCP Server，把图片交给 OpenAI 兼容视觉模型（默认智谱免费
-`glm-4.6v-flash`）识别。本插件用官方 `@deepseek-ai/dsh-mcp-client` 把它
-接入 DSH 组合层，工具以 `mcp__deepseek-vision__analyze_image` 等形式暴露，
-并随包附带 `vision` Skill（模型遇到图片时自动触发）。
+## 能力
 
-## 前置条件
+- DSH Web 中直接粘贴或拖入 PNG/JPEG/GIF/WebP；插件保存为权限 `0600` 的临时文件，
+  并把明确的视觉工具调用指令插入输入框。
+- 自动安装版本锁定的 Python MCP 后端到 `$DSH_HOME/cache`，无需克隆仓库、创建
+  虚拟环境或修改 Python 绝对路径。
+- 保留 `analyze_image`、`analyze_clipboard`、`compare_images`、`vision_status`
+  四个工具，以及多 Key 轮换、模型降级、缓存和 SSRF 防护。
+- 只接管明确选中的文本版 DeepSeek；原生视觉模型继续走 DSH 默认图片链路。
 
-- DeepSeek Harness（2025-08-13 版本，web profile）
-- Python 3.10+，且已安装并配置好 deepseek-vision-mcp：
-  ```bash
-  pip install -e "path/to/deepseek-vision"
-  cp path/to/deepseek-vision/.env.example ~/deepseek-vision/.env   # 填入 VISION_API_KEY
-  ```
+## 要求
+
+- DeepSeek Harness `0.1.0-rc.6`（兼容目标：`>=0.1.0-rc.6 <0.2.0`）
+- Node.js `22.19+` 或 `24+`
+- Python `3.10+`（只用于插件自动管理的隔离运行时）
+- 首次启动能访问 PyPI，以安装 wheel 的依赖
 
 ## 安装
 
-```bash
-dsh plugin --profile web add dsh-plugin-deepseek-vision
-```
-
-> 若未发布到 npm，可本地安装：`dsh plugin --profile web add file:./plugins/dsh-plugin-deepseek-vision`
-
-安装后**修改 `cordis.patch.yml` 中的 `command`** 为 deepseek-vision 虚拟环境
-Python 的绝对路径（如 `/Users/you/deepseek-vision/.venv/bin/python`），
-并确保环境里有 `VISION_API_KEY`（或去掉 `env.VISION_API_KEY` 那行，改用
-项目 `.env`）。
-
-重启 DSH 后，模型即可调用 `mcp__deepseek-vision__*` 工具。
-
-## 加载 Skill（自动触发）
-
-把包内 `skills/` 复制到 DSH 用户 skill 根目录（默认 `~/.dsh/skills/`）：
+正式发布后，把智谱 Key 放入启动 DSH 的环境，然后安装 Bundle：
 
 ```bash
-mkdir -p ~/.dsh/skills
-cp -r skills/vision ~/.dsh/skills/
+export VISION_API_KEY='你的智谱APIKey'
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.2.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
-之后用户发送图片/路径/URL/剪贴板图片或要求「看图/OCR/对比图片」时，
-模型会自动调用视觉工具。DSH 会自动热加载（filesystem provider 监视目录）。
+Windows PowerShell：
 
-## 手动接入（不装插件，等效）
-
-在 profile 的 `cordis.patch.yml` 中直接加：
-
-```yaml
-- insert:
-    - id: deepseek-vision
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        serverName: deepseek-vision
-        transport: stdio
-        command: /abs/path/to/.venv/bin/python
-        args: ['-m', 'deepseek_vision_mcp']
-        env:
-          VISION_API_KEY: !!js process.env.VISION_API_KEY
-          VISION_MODEL: glm-4.6v-flash
-          VISION_BASE_URL: https://open.bigmodel.cn/api/paas/v4
+```powershell
+$env:VISION_API_KEY = '你的智谱APIKey'
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.2.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
-## 发布说明（给维护者）
+> `0.2.0` 发布到 npm 前，请在本仓库运行
+> `VISION_BUILD_PYTHON=python3 npm pack`，再把生成的 `.tgz` 安装进 profile。
+> Bundle 自带同版本 Python wheel，避免前后端版本漂移。
 
-- 本包采用 **bundle patch 形态**（`dsh.bundle.patch` → `cordis.patch.yml`），
-  插入的 `@deepseek-ai/dsh-mcp-client` / `@deepseek-ai/dsh-skill-filesystem`
-  均为 DSH 内置组件，属于已验证路径。
-- 社区文档另有一种 **`dsh.mcpServers` 声明形态**（package.json 里直接声明
-  server-id → 启动配置，见 make-dsh-plugin skill）；发布前请用
-  `dsh --dump-config` 对照当前官方 spec 验证字段契约后再切换。
-- 发布到 npm：`npm publish`（`publishConfig.access: public`）。
-- 给仓库打标签便于搜索：`gh repo edit GOU-GEE/deepseek-vision --add-topic dsh --add-topic vision --add-topic mcp`
+## 配置
 
-## License
+默认值：
+
+```env
+VISION_MODEL=glm-4.6v-flash
+VISION_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+```
+
+还可在启动 DSH 前设置 `VISION_API_KEYS`、`VISION_MODELS` 等变量。也可以把
+`VISION_API_KEY: "你的Key"` 写入 DSH 官方凭据文件 `$DSH_HOME/.credentials.yaml`
+（文件权限应为 `0600`）；环境变量优先。Key、模型和 Base URL 必须来自同一服务商。
+不要把 Key 写进 `cordis.patch.yml`、普通配置文件或 Git 仓库。
+
+## 验证
+
+启动后选择文本版 DeepSeek，把一张截图粘贴或拖入输入框。输入框应出现类似：
+
+```text
+请调用 mcp__deepseek-vision__analyze_image 分析我刚粘贴的图片：/tmp/deepseek-vision-dsh-.../paste.png
+```
+
+发送后应出现视觉工具调用。也可运行：
+
+```bash
+dsh --profile web --dump-config | grep deepseek-vision
+```
+
+## 隐私与安全
+
+- 图片会发送给用户配置的第三方视觉模型服务。
+- 粘贴接口限制为 20 MB、拒绝跨站浏览器请求，并用魔数而不是扩展名识别图片；
+  权限 `0600` 的临时目录会在一小时后自动清理。
+- URL 默认拒绝回环、私网、元数据地址和 DNS rebinding。
+- API Key 不写入 npm 包、配置 patch、日志或模型上下文。
+
+## 发布
+
+```bash
+npm test
+VISION_BUILD_PYTHON=python3 npm pack --dry-run
+npm publish
+```
+
+DSH 是 Developer Preview，发版前必须在官方当前 RC 上重新执行干净 profile
+安装和真实图片验收。
 
 MIT

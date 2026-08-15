@@ -25,3 +25,34 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  npm-dsh-plugin:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.19.0"
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          npm ci --ignore-scripts --prefix plugins/dsh-plugin-deepseek-vision
+          python -m pip install --upgrade build
+
+      - name: Test and publish DSH bundle
+        working-directory: plugins/dsh-plugin-deepseek-vision
+        env:
+          VISION_BUILD_PYTHON: python
+        run: |
+          npm test
+          npm publish --access public --provenance

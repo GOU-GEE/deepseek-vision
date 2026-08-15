@@ -41,6 +41,17 @@ def _print_banner(cfg) -> None:
     )
 
 
+def _contains_keyboard_interrupt(exc: BaseException) -> bool:
+    """兼容 Python 3.10，并识别 AnyIO 在 3.11+ 包装的异常组。"""
+    if isinstance(exc, KeyboardInterrupt):
+        return True
+    return any(
+        _contains_keyboard_interrupt(nested)
+        for nested in getattr(exc, "exceptions", ())
+        if isinstance(nested, BaseException)
+    )
+
+
 def _cmd_check() -> int:
     """校验配置与依赖是否就绪。"""
     try:
@@ -156,7 +167,14 @@ def main(argv=None) -> int:
         _print_banner(load_config())
     except Exception:
         pass  # 未配置 Key 也能启动，调用工具时才报错
-    run()
+    try:
+        run()
+    except BaseException as exc:
+        # MCP 2.x / AnyIO 可能把 Ctrl-C 包在 BaseExceptionGroup 中。正常退出时
+        # 不向 DSH 用户倾倒数十行异常栈；其他 BaseException 仍原样抛出。
+        if _contains_keyboard_interrupt(exc):
+            return 130
+        raise
     return 0
 
 

@@ -1,36 +1,36 @@
-# dsh-plugin-deepseek-vision bundle patch
+# DeepSeek Vision for DSH — composition bundle.
 #
-# 把 deepseek-vision MCP Server 注册进 DSH 组合层：
-#   1. 通过官方 @deepseek-ai/dsh-mcp-client 连接我们的 MCP Server
-#      （工具将以 mcp__deepseek-vision__analyze_image 等形式暴露给模型）
-#   2. （可选）通过 dsh-skill-filesystem 挂载 vision Skill 目录
-#      ——默认不启用，推荐直接用 README 里的一行命令复制 skills 到 ~/.dsh/skills
-#
-# 安装方式：
-#   dsh plugin --profile web add dsh-plugin-deepseek-vision
-#
-# 注意：command 请替换为 deepseek-vision-mcp 虚拟环境中 python 的绝对路径；
-#       API Key 建议通过 DSH 环境（process.env）注入，不要写死在配置里。
-
+# The host row provides the safe paste-to-path bridge. The MCP row launches a
+# version-locked npm executable; on first start it prepares an isolated Python
+# environment under $DSH_HOME/cache and then starts deepseek-vision-mcp. The
+# host row creates the launcher shim before this MCP row activates.
 - insert:
-    - id: deepseek-vision
+    - id: deepseek-vision-host
+      name: dsh-plugin-deepseek-vision
+
+    - id: deepseek-vision-mcp
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: deepseek-vision
         transport: stdio
-        command: python
-        args: ['-m', 'deepseek_vision_mcp']
+        command: node
+        args:
+          - !!js (process.env.DSH_HOME ?? ((process.env.USERPROFILE ?? process.env.HOME ?? '.') + '/.dsh')) + '/cache/deepseek-vision-mcp/launcher.mjs'
         env:
-          VISION_API_KEY: !!js process.env.VISION_API_KEY
-          VISION_MODEL: glm-4.6v-flash
-          VISION_BASE_URL: https://open.bigmodel.cn/api/paas/v4
-
-    # --- 可选：挂载本包自带的 vision Skill -------------------------------
-    # 用法：把 <plugin-dir> 换成实际安装目录（$DSH_HOME/profiles/web/node_modules/
-    #       dsh-plugin-deepseek-vision/），取消注释即可；或用一行命令复制：
-    #       cp -r skills/vision "$DSH_HOME/skills/"  （$DSH_HOME 默认 ~/.dsh）
-    # - id: dsh-skill-filesystem
-    #   name: '@deepseek-ai/dsh-skill-filesystem'
-    #   config:
-    #     customSkillDirs:
-    #       - <plugin-dir>/skills
+          # dsh-mcp-client intentionally builds a narrow child environment.
+          # Forward these explicitly so the managed runtime stays inside the
+          # active (including isolated test) DSH home and honours Python choice.
+          DSH_HOME: !!js process.env.DSH_HOME ?? ((process.env.USERPROFILE ?? process.env.HOME ?? '.') + '/.dsh')
+          VISION_PYTHON: !!js process.env.VISION_PYTHON ?? ''
+          VISION_API_KEY: !!js process.env.VISION_API_KEY ?? ''
+          VISION_API_KEYS: !!js process.env.VISION_API_KEYS ?? ''
+          VISION_MODEL: !!js process.env.VISION_MODEL ?? 'glm-4.6v-flash'
+          VISION_MODELS: !!js process.env.VISION_MODELS ?? ''
+          VISION_BASE_URL: !!js process.env.VISION_BASE_URL ?? 'https://open.bigmodel.cn/api/paas/v4'
+        toolCallTimeoutMs: 180000
+        failOnStartupError: false
+        reconnect:
+          enabled: true
+          initialDelayMs: 1000
+          maxDelayMs: 30000
+          maxAttempts: 10
