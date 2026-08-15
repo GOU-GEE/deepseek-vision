@@ -159,8 +159,9 @@ jobs:
         run: |
           cd plugins/dsh-plugin-deepseek-vision
           npm pack
-          tar -tf dsh-plugin-deepseek-vision-0.3.0.tgz | grep 'runtime/deepseek_vision_mcp-.*\.whl'
-          tar -tf dsh-plugin-deepseek-vision-0.3.0.tgz | grep 'package/LICENSE'
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          tar -tf "dsh-plugin-deepseek-vision-$PKG_VERSION.tgz" | grep 'runtime/deepseek_vision_mcp-.*\.whl'
+          tar -tf "dsh-plugin-deepseek-vision-$PKG_VERSION.tgz" | grep 'package/LICENSE'
 
       - name: Managed runtime MCP handshake
         env:
@@ -170,7 +171,8 @@ jobs:
       - name: Install bundle into an isolated official DSH profile
         run: |
           export DSH_HOME="$RUNNER_TEMP/dsh-home"
-          TARBALL="$GITHUB_WORKSPACE/plugins/dsh-plugin-deepseek-vision/dsh-plugin-deepseek-vision-0.3.0.tgz"
+          PKG_VERSION=$(node -p "require('./plugins/dsh-plugin-deepseek-vision/package.json').version")
+          TARBALL="$GITHUB_WORKSPACE/plugins/dsh-plugin-deepseek-vision/dsh-plugin-deepseek-vision-$PKG_VERSION.tgz"
           npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add "$TARBALL"
           npx -y @deepseek-ai/dsh@0.1.0-rc.6 --profile web --dump-config > "$RUNNER_TEMP/dsh-config.txt"
           grep -q 'deepseek-vision-host' "$RUNNER_TEMP/dsh-config.txt"

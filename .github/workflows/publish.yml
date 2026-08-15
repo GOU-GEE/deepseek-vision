@@ -53,6 +53,9 @@ jobs:
         working-directory: plugins/dsh-plugin-deepseek-vision
         env:
           VISION_BUILD_PYTHON: python
+          # 使用 npm 账号的发布 token（包所有者身份），而非 OIDC 派生身份。
+          # OIDC 身份无法向已存在的包名发布（404），token 身份则可以。
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm test
           npm publish --access public --provenance

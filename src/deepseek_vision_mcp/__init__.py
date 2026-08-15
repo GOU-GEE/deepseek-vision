@@ -6,6 +6,6 @@ OpenAI 兼容视觉模型 API 识别，并把识别结果返回给主模型。
 
 from .config import VisionConfig, load_config
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 __all__ = ["load_config", "VisionConfig", "__version__"]

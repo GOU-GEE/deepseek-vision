@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-deepseek-vision",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "DeepSeek Harness 原生视觉 Bundle：粘贴或拖入图片，通过托管的 deepseek-vision-mcp 调用 OpenAI 兼容视觉模型。",
   "type": "module",
   "main": "./index.js",
