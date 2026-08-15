@@ -21,41 +21,46 @@ DeepSeek 系列模型是纯文本模型，无法直接识别图片。本项目�
 ## 🚀 一句话安装（复制给 AI 助手，免手动操作）
 
 主要在 DeepSeek Harness 中使用时，复制下面的推荐提示词给助手。它会从全新克隆构建
-本仓库的 DSH Bundle、安装到 Web profile、完成自动托管 Python 与真实图片验收。
+本仓库的 DSH Bundle、安装到桌面版共用的 Web profile，并引导你在 DSH 可视化页面中
+安全填写 Key，最后完成自动托管 Python 与真实图片验收。
 其他 MCP 客户端请使用后面的通用版。
 
 > **关于 API Key（请先读）**：
-> - ✅ 默认方案使用智谱 `glm-4.6v-flash`：把提示词中的 `YOUR_ZHIPU_FREE_API_KEY`
->   换成你在 `https://open.bigmodel.cn` 申请的智谱 Key，助手会自动配置。
+> - ✅ 默认方案使用智谱 `glm-4.6v-flash`：安装后在 DSH 的
+>   `设置 → 插件 → 插件配置 → DeepSeek Vision` 中填写你在
+>   `https://open.bigmodel.cn` 申请的 Key。
 > - ⚠️ Key、模型和 Base URL 必须属于同一家服务商。硅基流动或通义千问的 Key 也能用，
 >   但必须同时把对应的 `VISION_MODEL` 与 `VISION_BASE_URL` 告诉助手，不能套用智谱默认值。
-> - 🔒 **付费 Key 请勿明文发给 AI 助手**：删掉提示词里的 Key 占位行，助手会引导你
->   自己填写 `.env`，Key 只保存在你本机，不会经过对话。
+> - 🔒 免费或付费 Key 都不必发给 AI 助手：可视化页面不会回显 Key，凭据由 DSH
+>   官方凭据存储保存，不会写进仓库或普通配置文件。
 
 **DeepSeek Harness 推荐版（一会话从零部署并验收）**：
 
 ```text
 请在一个会话内从零安装并验收 https://github.com/GOU-GEE/deepseek-vision 的 DSH
-插件，让文本版 DeepSeek 获得视觉能力（默认智谱免费模型 glm-4.6v-flash）：
+插件，让 macOS DeepSeek Harness 桌面版中的文本模型获得视觉能力（默认智谱免费模型
+glm-4.6v-flash）：
 1. 在全新的、不复用旧仓库或虚拟环境的目录克隆 main，确认 Node >=22.19、Python >=3.10，
    并运行 corepack enable、corepack prepare pnpm@11.7.0 --activate。
 2. 进入 plugins/dsh-plugin-deepseek-vision，运行 npm ci --ignore-scripts、npm test，
    再以可用的 Python 设置 VISION_BUILD_PYTHON 并运行 npm pack；检查 tarball 内含 LICENSE
    和 runtime/deepseek_vision_mcp-0.2.0-py3-none-any.whl。
-3. 用 npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add <tarball绝对路径>
-   安装源码构建的包；不要尝试安装尚未发布的 npm 版本。用同版 dsh --profile web
-   --dump-config 确认 deepseek-vision-host、deepseek-vision-mcp 和 launcher.mjs 均已加载。
-4. API Key 只放在启动 DSH 的 VISION_API_KEY 环境变量，或权限 0600 的
-   $DSH_HOME/.credentials.yaml；不得写进仓库。若下面提供了智谱免费 Key可代为设置；
-   未提供或属于付费 Key就暂停，让我本机填写，不索取明文。
-5. 先从仓库根目录运行 python scripts/verify_dsh_plugin.py，必须通过真实 MCP stdio 握手、
-   4 个工具和 vision_status；然后启动 DSH Web，选择文本版 DeepSeek，把
+3. 确认 `/Applications/DeepSeek Harness.app` 存在并读取它的实际 DSH 版本；先让我用
+   Cmd+Q 完全退出桌面版，再使用 App 内置的 DSH CLI，把源码构建的 tarball 合并安装到
+   默认 `web` profile。不要尝试安装尚未发布的 npm 版本，不覆盖整个 profile。用同一
+   CLI 的 `--profile web --dump-config` 确认 deepseek-vision-host、deepseek-vision-mcp
+   和 launcher.mjs 均已加载；若不是 macOS 桌面版，再回退到同版本 npx dsh 命令。
+4. 让我重新打开 DeepSeek Harness，进入
+   `设置 → 插件 → 插件配置 → DeepSeek Vision`，选择“智谱 GLM（推荐免费）”，确认模型
+   自动为 glm-4.6v-flash、Base URL 自动为 https://open.bigmodel.cn/api/paas/v4；让我亲自
+   在密码框填写 Key，点击“保存”和“测试连接”。不得向我索取或读取 Key，测试连接失败时
+   展示页面错误。保存后按页面提示 Cmd+Q 并重新打开，使 MCP 使用新配置。
+5. 从仓库根目录运行 python scripts/verify_dsh_plugin.py，必须通过真实 MCP stdio 握手、
+   4 个工具和 vision_status；然后在重新打开的桌面版中选择文本版 DeepSeek，把
    examples/test_image.jpg 粘贴或拖入输入框，确认插件插入 analyze_image 指令、工具实际
    调用成功，返回 model=glm-4.6v-flash。再发同图同问题，确认 cached=true。
 6. 每一步失败立即停止并展示完整错误；配置只做合并，不覆盖用户原有 DSH profile，
    不删除旧安装。最后汇报克隆路径、tarball、DSH profile、托管运行时路径及全部验收结果。
-
-[我的智谱免费 API Key（可选；付费 Key 请删掉这一行）: YOUR_ZHIPU_FREE_API_KEY]
 ```
 
 **其他 MCP 客户端通用版（Claude Code / Codex / OpenCode 等）**：
@@ -439,6 +444,24 @@ DeepSeek 后可直接粘贴或拖入图片；插件把图片安全保存为临�
 视觉工具调用指令。Node.js 要求 `22.19+` 或 `24+`，需启用 Corepack/pnpm；Python
 要求 `3.10+`。
 
+#### macOS 桌面版可视化配置
+
+安装 Bundle 并重新打开 DeepSeek Harness 后，进入：
+
+```text
+设置 → 插件 → 插件配置 → DeepSeek Vision
+```
+
+选择视觉服务商后会自动带入推荐模型和 Base URL；填写 API Key 后可直接“保存”并
+“测试连接”。测试会发送一张 1×1 图片并请求最多 8 tokens，因此会产生一次极小的真实
+视觉请求。Key 由 DSH 官方凭据存储保存，页面和普通配置只显示“已配置”，不会回显原文；
+非本机 Base URL 必须使用 HTTPS，且不能在 URL 中夹带账号密码。保存后用 `Cmd+Q` 完全
+退出并重新打开桌面版，使正在运行的 MCP 进程读取新配置。
+
+当前已在官方 macOS 桌面版 `0.1.0-rc.5` 实机验证，并在 CI 同时验证 DSH
+`0.1.0-rc.5` / `0.1.0-rc.6` 的干净 profile 安装。DSH 仍处于预览期，升级后应重新
+执行一次连接和图片验收。
+
 > 包内自带完整说明与等效的手写配置（`plugins/dsh-plugin-deepseek-vision/README.md`）。
 > 本包采用 bundle patch 形态并使用 DSH 内置 `dsh-mcp-client`。当前 npm 版本发布前，
 > 请从仓库构建 tarball 做本地验收；不要把尚未发布的命令描述成已可公开安装。
@@ -499,7 +522,7 @@ mkdir -p ~/.dsh/skills && cp -r skills/vision ~/.dsh/skills/
 - **公开安装路径不要求提交官方商店审核**：作者可发布公开 npm 包，用户也可从 npm、
   GitHub 或本地 tarball 安装。官方当前建议用 GitHub 的 `dsh-plugin` topic 做发现；
   这不代表 DeepSeek 官方背书或安全审核。
-- **Developer Preview 注意**：当前锁定并测试 `0.1.0-rc.6`；DSH 在 0.2.0 前可能发生
+- **Developer Preview 注意**：当前测试 `0.1.0-rc.5` 与 `0.1.0-rc.6`；DSH 在 0.2.0 前可能发生
   破坏性变化。每次发布都必须用干净 profile 执行安装、`--dump-config` 和真实图片验收。
 
 ### 验证集成

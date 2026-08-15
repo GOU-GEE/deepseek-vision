@@ -53,6 +53,31 @@ export function runtimeRoot() {
   return join(dshHome, 'cache', 'deepseek-vision-mcp', PACKAGE_VERSION)
 }
 
+export function loadVisionSettings(environment = process.env) {
+  const dshHome = environment.DSH_HOME ? resolve(environment.DSH_HOME) : join(homedir(), '.dsh')
+  const filename = join(dshHome, 'deepseek-vision.json')
+  if (!existsSync(filename)) return {}
+  try {
+    const value = JSON.parse(readFileSync(filename, 'utf8'))
+    return value && typeof value === 'object' ? value : {}
+  } catch {
+    throw new Error(`DSH 视觉配置文件格式无效：${filename}`)
+  }
+}
+
+export function buildChildEnvironment(environment = process.env) {
+  const child = { ...environment }
+  const settings = loadVisionSettings(environment)
+  const choose = (name, stored, fallback) => {
+    const explicit = typeof child[name] === 'string' ? child[name].trim() : ''
+    child[name] = explicit || (typeof stored === 'string' ? stored.trim() : '') || fallback
+  }
+  choose('VISION_MODEL', settings.model, 'glm-4.6v-flash')
+  choose('VISION_BASE_URL', settings.baseUrl, 'https://open.bigmodel.cn/api/paas/v4')
+  choose('VISION_PROVIDER', undefined, 'openai_compatible')
+  return child
+}
+
 export function loadDshCredential(environment = process.env) {
   if (environment.VISION_API_KEY?.trim()) return environment.VISION_API_KEY.trim()
   const dshHome = environment.DSH_HOME ? resolve(environment.DSH_HOME) : join(homedir(), '.dsh')
@@ -98,7 +123,7 @@ export function main() {
   try {
     const interpreter = ensureRuntime()
     const key = loadDshCredential()
-    const childEnvironment = { ...process.env }
+    const childEnvironment = buildChildEnvironment()
     if (key) childEnvironment.VISION_API_KEY = key
     const child = spawn(interpreter, ['-m', 'deepseek_vision_mcp'], {
       stdio: 'inherit',

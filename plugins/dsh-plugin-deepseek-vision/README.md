@@ -16,7 +16,7 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
 
 ## 要求
 
-- DeepSeek Harness `0.1.0-rc.6`（兼容目标：`>=0.1.0-rc.6 <0.2.0`）
+- DeepSeek Harness `0.1.0-rc.5` / `0.1.0-rc.6`（兼容目标：`>=0.1.0-rc.5 <0.2.0`）
 - Node.js `22.19+` 或 `24+`
 - Corepack 已启用的 pnpm `11.7.0+`（`corepack enable`）
 - Python `3.10+`（只用于插件自动管理的隔离运行时）
@@ -46,6 +46,17 @@ npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 
 ## 配置
 
+macOS 桌面版安装并重启后，进入：
+
+```text
+设置 → 插件 → 插件配置 → DeepSeek Vision
+```
+
+选择智谱、硅基流动、通义千问或自定义 OpenAI 兼容服务，页面会联动推荐模型与
+Base URL。填写 Key 后点击“保存”和“测试连接”；保存后用 `Cmd+Q` 完全退出并重新打开
+DSH，让 MCP 进程读取新配置。Key 存入 DSH 官方凭据存储，页面只显示配置状态且不会
+回显原文。测试连接会发送一张 1×1 图片并请求最多 8 tokens。
+
 默认值：
 
 ```env
@@ -53,7 +64,8 @@ VISION_MODEL=glm-4.6v-flash
 VISION_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 ```
 
-还可在启动 DSH 前设置 `VISION_API_KEYS`、`VISION_MODELS` 等变量。也可以把
+环境变量的优先级高于可视化配置。还可在启动 DSH 前设置 `VISION_API_KEYS`、
+`VISION_MODELS` 等变量。也可以把
 `VISION_API_KEY: "你的Key"` 写入 DSH 官方凭据文件 `$DSH_HOME/.credentials.yaml`
 （文件权限应为 `0600`）；环境变量优先。Key、模型和 Base URL 必须来自同一服务商。
 不要把 Key 写进 `cordis.patch.yml`、普通配置文件或 Git 仓库。

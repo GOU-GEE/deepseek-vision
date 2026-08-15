@@ -24,9 +24,9 @@
           VISION_PYTHON: !!js process.env.VISION_PYTHON ?? ''
           VISION_API_KEY: !!js process.env.VISION_API_KEY ?? ''
           VISION_API_KEYS: !!js process.env.VISION_API_KEYS ?? ''
-          VISION_MODEL: !!js process.env.VISION_MODEL ?? 'glm-4.6v-flash'
+          VISION_MODEL: !!js process.env.VISION_MODEL ?? ''
           VISION_MODELS: !!js process.env.VISION_MODELS ?? ''
-          VISION_BASE_URL: !!js process.env.VISION_BASE_URL ?? 'https://open.bigmodel.cn/api/paas/v4'
+          VISION_BASE_URL: !!js process.env.VISION_BASE_URL ?? ''
         toolCallTimeoutMs: 180000
         failOnStartupError: false
         reconnect:

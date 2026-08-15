@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { findPython, loadDshCredential, parsePythonVersion, supportsPython } from '../launcher.js'
+import { buildChildEnvironment, findPython, loadDshCredential, parsePythonVersion, supportsPython } from '../launcher.js'
 
 test('parses and gates Python versions', () => {
   assert.deepEqual(parsePythonVersion('Python 3.12.8'), [3, 12, 8])
@@ -39,4 +39,22 @@ test('credential parser errors never echo a secret source line', async () => {
     assert.doesNotMatch(error.message, /super-secret/)
     return true
   })
+})
+
+test('desktop settings configure the managed MCP while environment still wins', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-vision-launcher-settings-'))
+  writeFileSync(join(home, 'deepseek-vision.json'), JSON.stringify({
+    model: 'saved-model',
+    baseUrl: 'https://saved.example/v1',
+  }))
+  const saved = buildChildEnvironment({ DSH_HOME: home, VISION_MODEL: '', VISION_BASE_URL: '' })
+  assert.equal(saved.VISION_MODEL, 'saved-model')
+  assert.equal(saved.VISION_BASE_URL, 'https://saved.example/v1')
+  const explicit = buildChildEnvironment({
+    DSH_HOME: home,
+    VISION_MODEL: 'environment-model',
+    VISION_BASE_URL: 'https://environment.example/v1',
+  })
+  assert.equal(explicit.VISION_MODEL, 'environment-model')
+  assert.equal(explicit.VISION_BASE_URL, 'https://environment.example/v1')
 })
