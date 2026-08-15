@@ -53,9 +53,14 @@ jobs:
         working-directory: plugins/dsh-plugin-deepseek-vision
         env:
           VISION_BUILD_PYTHON: python
-          # 使用 npm 账号的发布 token（包所有者身份），而非 OIDC 派生身份。
-          # OIDC 身份无法向已存在的包名发布（404），token 身份则可以。
+          # 可选：npm 账号的发布 token（包所有者身份）。
+          # 未配置时，若版本已存在（如作者已手动发布）则跳过，避免发布流程失败。
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm test
-          npm publish --access public --provenance
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if npm view "dsh-plugin-deepseek-vision@$PKG_VERSION" version >/dev/null 2>&1; then
+            echo "npm 版本 $PKG_VERSION 已存在（可能已手动发布），跳过 npm publish"
+          else
+            npm publish --access public --provenance
+          fi
