@@ -1,6 +1,9 @@
 # deepseek-vision-mcp
 
 [![CI](https://github.com/GOU-GEE/deepseek-vision/actions/workflows/test.yml/badge.svg)](https://github.com/GOU-GEE/deepseek-vision/actions/workflows/test.yml)
+[![Publish](https://github.com/GOU-GEE/deepseek-vision/actions/workflows/publish.yml/badge.svg)](https://github.com/GOU-GEE/deepseek-vision/actions/workflows/publish.yml)
+[![PyPI version](https://img.shields.io/pypi/v/deepseek-vision-mcp?color=3776AB&label=PyPI)](https://pypi.org/project/deepseek-vision-mcp/)
+[![npm version](https://img.shields.io/npm/v/dsh-plugin-deepseek-vision?color=CB3837&label=npm)](https://www.npmjs.com/package/dsh-plugin-deepseek-vision)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 

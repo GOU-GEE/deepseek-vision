@@ -1,14 +1,19 @@
 # Changelog
 
+## v0.3.2（2026-08-15）— 当前 latest
+
+正式发布版本。功能与 v0.3.0 一致；版本号经 0.3.0 → 0.3.1 → 0.3.2 的
+调整是因为发布链路磨合（见 docs/RELEASING.md 的踩坑记录）。
+
+- npm：`dsh-plugin-deepseek-vision@0.3.2`（作者手动发布，含内置 Python wheel）
+- PyPI：`deepseek-vision-mcp==0.3.2`（Trusted Publishing 自动发布）
+- 双端版本一致，全新环境安装验证通过
+
 ## v0.3.1（2026-08-15）
 
-正式发布版本。功能与 v0.3.0 相同；版本号提升是因为 npm 的
-`dsh-plugin-deepseek-vision@0.3.0` 已由作者手动认领，为保证
-「GitHub Release → CI 自动发布」不撞版本，统一升级到 0.3.1。
-
-- npm：`dsh-plugin-deepseek-vision@0.3.1`（CI 自动发布，含 provenance）
-- PyPI：`deepseek-vision-mcp==0.3.1`（首次发布，Trusted Publishing
-  自动创建项目）
+- PyPI：`deepseek-vision-mcp==0.3.1`（Trusted Publishing 首次发布成功）
+- npm：该版本 CI 发布失败（OIDC 身份 404），npm 上无 0.3.1；
+  实际以 0.3.2 完成双端发布
 
 ## v0.3.0（2026-08-15）
 
