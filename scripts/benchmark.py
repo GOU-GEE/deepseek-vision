@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -67,8 +66,8 @@ def bench_install(python: str) -> int:
 def bench_ocr(image: str, expected: list[str]) -> int:
     from deepseek_vision_mcp.config import load_config
     from deepseek_vision_mcp.image_utils import load_image_as_base64
-    from deepseek_vision_mcp.providers import build_provider
     from deepseek_vision_mcp.prompts import TASK_PROMPTS
+    from deepseek_vision_mcp.providers import build_provider
 
     cfg = load_config()
     data_uri, mime = load_image_as_base64(
@@ -102,8 +101,8 @@ def bench_ocr(image: str, expected: list[str]) -> int:
 # repeat：同图重复调用延迟（第一次未缓存 vs 第二次缓存）
 # ---------------------------------------------------------------------------
 def bench_repeat(image: str, prompt: str) -> int:
-    from deepseek_vision_mcp.server import create_server
     from deepseek_vision_mcp.config import load_config
+    from deepseek_vision_mcp.server import create_server
 
     cfg = load_config()
     mcp = create_server(config=cfg)
@@ -189,9 +188,10 @@ def bench_key_leak(test_key: str) -> int:
     checks["repo_does_not_contain_key"] = not repo_hits
 
     # 2) vision_status 输出不应包含 Key
-    from deepseek_vision_mcp.server import create_server
-    from deepseek_vision_mcp.config import load_config
     import os as _os
+
+    from deepseek_vision_mcp.config import load_config
+    from deepseek_vision_mcp.server import create_server
     _os.environ.setdefault("VISION_API_KEY", test_key)
     cfg = load_config()
     mcp = create_server(config=cfg)
