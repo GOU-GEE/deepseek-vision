@@ -90,19 +90,19 @@ scripts/verify_dsh_plugin.py          # DSH 托管运行时握手验收
 - ✅ 首次正式发布：PyPI + npm 双端 `0.3.2`（发布流程与踩坑见 docs/RELEASING.md）
 - ✅ DSH 桌面版插件：可视化配置页、粘贴/拖拽图片自动触发、自动 Python 运行时引导
 - ✅ awesome-dsh-plugin 收录：**PR #583 已合并**（列表 Tools & Capabilities 分类）
+- ✅ **市场截图收录：PR #987 已合并**（5 张截图已进 `data/screenshots.json`，
+  dsh-market ≥1.8.0 以 AppStore 风格展示；截图已打码本地路径，隐私安全）
 - ✅ 仓库 Topics：`dsh-plugin` 等 11 个
 - ✅ README：收录徽章 + 「与 DSH 原生视觉/其他插件区别」章节
 - ✅ 可复现对比测试 benchmark（5 子命令）
-- ⏳ **市场截图 PR #987 待合并**（5 张截图，dsh-market AppStore 风格展示）
 
 ## 7. 待办 / 进行中
 
-1. **PR #987**（awesome-dsh-plugin 截图收录）：等维护者合并，收到
-   `Merged #987` 邮件即成功；几天无动静可在 PR 里礼貌催。
-2. **首轮宣发**（可选下一步）：GitHub Discussions / 社交媒体简介；可先等 #987 合并。
-3. 真实 DSH profile 已在 0.3.2（npm 版），无需再动；用户 Key 未触碰。
-4. 未来优化候选（按价值排序，未实施）：
-   - 多 Key 轮询 / 模型降级链 **已在 0.3.2 实现**（见 4）；剩余候选：
+1. **首轮宣发**（下一步可选）：GitHub Discussions / 社交媒体简介；市场截图已就绪，
+   可在 dsh-market ≥1.8.0 验证 AppStore 风格展示效果。
+2. 真实 DSH profile 已在 0.3.2（npm 版）+ dsh-market 1.3.1（更新提示为发布安全期，
+   可点「立即更新」或等满一天）；用户 Key 未触碰。
+3. 未来优化候选（按价值排序，未实施）：
    - `retry_last_image` 零参数重试工具（失败图内存暂存）
    - TOOLS 工具白名单（省主模型上下文）
    - `thinking` 参数透传
