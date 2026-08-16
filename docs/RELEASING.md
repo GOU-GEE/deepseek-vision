@@ -85,4 +85,6 @@ VISION_BUILD_PYTHON=/tmp/py312/python/bin/python3 npm publish --access public
 
 - `0.3.0`：npm 手动认领（作者发布）；PyPI 无
 - `0.3.1`：PyPI 发布成功；npm CI 发布失败（坑 #3），npm 无此版本
-- `0.3.2`：npm 手动发布 + PyPI Trusted Publishing，双端一致 ✅ 当前 latest
+- `0.3.2`：npm 手动发布 + PyPI Trusted Publishing，双端一致
+- `0.4.0`：npm 手动发布 + PyPI Trusted Publishing，双端一致 ✅ 当前 latest
+  （PR #1 缩略图卡带 + 隐藏指令引用 + 评审修复）

@@ -16,15 +16,15 @@
 - **原理**：DeepSeek 不直接「看」图；用户发图片时，主模型调用视觉工具，把图片交给
   OpenAI 兼容视觉模型（默认智谱免费 `glm-4.6v-flash`）识别，识别文本再喂回 DeepSeek。
 - **GitHub**：https://github.com/GOU-GEE/deepseek-vision
-- **当前版本**：`0.4.0`（main；PyPI/npm 双端发布待 Release 触发，当前线上 latest 仍为 0.3.2）
+- **当前版本**：`0.4.0`（PyPI 与 npm 双端一致）
 - **许可证**：MIT
 
 ## 2. 交付物（均已发布）
 
 | 形态 | 包名 / 地址 | 版本 |
 | --- | --- | --- |
-| Python MCP Server | PyPI `deepseek-vision-mcp` | 0.4.0（待发布） |
-| DSH 原生插件（bundle） | npm `dsh-plugin-deepseek-vision` | 0.4.0（待发布） |
+| Python MCP Server | PyPI `deepseek-vision-mcp` | 0.4.0 |
+| DSH 原生插件（bundle） | npm `dsh-plugin-deepseek-vision` | 0.4.0 |
 | 源码 | GitHub `GOU-GEE/deepseek-vision`，分支 `main` | 最新提交见 `git log` |
 
 **4 个 MCP 工具**：`analyze_image`（单图，路径/URL/base64）、`analyze_clipboard`
@@ -98,19 +98,16 @@ scripts/verify_dsh_plugin.py          # DSH 托管运行时握手验收
 - ✅ **PR #1 已合并**（作者 pppolf）：DSH 输入框缩略图卡带 + 隐藏指令引用
   （不再往输入框插长指令；无文字自动预设指令，有文字只传图片路径，发送后自动清理）
 - ✅ 合并后修复：多会话串扰 + 上传窗口竞态（插件 Node 测试 18 → 26）
-- ⏳ 升版准备：`0.3.2 → 0.4.0`（四处版本已同步 + CHANGELOG/PROJECT_LOG 已更新，
-  待发布）
+- ✅ **v0.4.0 双端发布完成**：npm 手动发布（0.4.0，latest）+ PyPI Trusted
+  Publishing（0.4.0，latest）；全新 venv pip 安装与 npm view 验收通过
 
 ## 7. 待办 / 进行中
 
-1. **发布 v0.4.0**：推 main 等 CI 全绿 → npm 手动发布（工作区 Node，2FA）→
-   创建 GitHub Release `v0.4.0` 触发 PyPI Trusted Publishing → 发布后验收
-   （pip 安装 / npm view / 全新 DSH_HOME 安装 / dump-config）。
-2. **首轮宣发**（下一步可选）：GitHub Discussions / 社交媒体简介；市场截图已就绪，
+1. **首轮宣发**（下一步可选）：GitHub Discussions / 社交媒体简介；市场截图已就绪，
    可在 dsh-market ≥1.8.0 验证 AppStore 风格展示效果。
-3. 真实 DSH profile 已装 0.3.2（npm 版）+ dsh-market 1.3.1（更新提示为发布安全期，
-   可点「立即更新」或等满一天）；用户 Key 未触碰。
-4. 未来优化候选（按价值排序，未实施）：
+2. 真实 DSH profile 已装 0.3.2（npm 版）+ dsh-market 1.3.1（更新提示为发布安全期，
+   可点「立即更新」升级到 0.4.0 或等满一天）；用户 Key 未触碰。
+3. 未来优化候选（按价值排序，未实施）：
    - `retry_last_image` 零参数重试工具（失败图内存暂存）
    - TOOLS 工具白名单（省主模型上下文）
    - `thinking` 参数透传
