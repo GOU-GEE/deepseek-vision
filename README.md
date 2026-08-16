@@ -48,7 +48,8 @@ glm-4.6v-flash）：
    并运行 corepack enable、corepack prepare pnpm@11.7.0 --activate。
 2. 进入 plugins/dsh-plugin-deepseek-vision，运行 npm ci --ignore-scripts、npm test，
    再以可用的 Python 设置 VISION_BUILD_PYTHON 并运行 npm pack；检查 tarball 内含 LICENSE
-   和 runtime/deepseek_vision_mcp-0.3.0-py3-none-any.whl。
+   和 runtime/deepseek_vision_mcp-<pyproject 中的版本>-py3-none-any.whl
+   （当前 main 为 deepseek_vision_mcp-0.3.2-py3-none-any.whl）。
 3. 确认 `/Applications/DeepSeek Harness.app` 存在并读取它的实际 DSH 版本；先让我用
    Cmd+Q 完全退出桌面版，再使用 App 内置的 DSH CLI，把源码构建的 tarball 合并安装到
    默认 `web` profile。不要尝试安装尚未发布的 npm 版本，不覆盖整个 profile。用同一
@@ -61,8 +62,10 @@ glm-4.6v-flash）：
    展示页面错误。保存后按页面提示 Cmd+Q 并重新打开，使 MCP 使用新配置。
 5. 从仓库根目录运行 python scripts/verify_dsh_plugin.py，必须通过真实 MCP stdio 握手、
    4 个工具和 vision_status；然后在重新打开的桌面版中选择文本版 DeepSeek，把
-   examples/test_image.jpg 粘贴或拖入输入框，确认插件插入 analyze_image 指令、工具实际
-   调用成功，返回 model=glm-4.6v-flash。再发同图同问题，确认 cached=true。
+   examples/test_image.jpg 粘贴或拖入输入框，确认输入框上方出现不超过输入框宽度的
+   缩略图卡带、输入框内不显示工具指令长文本；不输入文字直接发送时，确认自动注入
+   analyze_image 指令且工具实际调用成功、返回 model=glm-4.6v-flash，发送后缩略图卡带
+   自动关闭。再发同图同问题，确认 cached=true。
 6. 每一步失败立即停止并展示完整错误；配置只做合并，不覆盖用户原有 DSH profile，
    不删除旧安装。最后汇报克隆路径、tarball、DSH profile、托管运行时路径及全部验收结果。
 ```
@@ -450,16 +453,32 @@ DeepSeek Harness（2026-08-13 发布，目前处于 Developer Preview）原生�
 
 ```bash
 export VISION_API_KEY='你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.2
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
 插件首次启动时会在 `$DSH_HOME/cache` 自动准备隔离 Python 环境并启动 MCP，
 无需克隆本仓库、手工建立虚拟环境、修改 Python 绝对路径或复制 Skill。选择文本版
-DeepSeek 后可直接粘贴或拖入图片；插件把图片安全保存为临时文件，并在输入框插入明确的
-视觉工具调用指令。桌面运行直接复用 DSH App 内置 Node，不依赖 GUI 的 PATH，也不要求
+DeepSeek 后可直接粘贴或拖入图片：插件把图片安全保存为临时文件，并在输入框上方显示
+缩略图卡带，输入框内只保留一个隐藏的图片引用标记，不展示工具调用长指令。
+桌面运行直接复用 DSH App 内置 Node，不依赖 GUI 的 PATH，也不要求
 用户另装 Node；如果系统没有 Python 3.10+，插件会下载经过固定 SHA-256 校验的官方
 `uv` 引导器，在 `$DSH_HOME/cache` 自动准备隔离 CPython 3.12 和运行环境。
+
+#### 粘贴图片后的输入框交互
+
+- **缩略图卡带**：粘贴或拖入图片后，输入框上方显示缩略图卡带，宽度按 DSH composer
+  变量收敛，不超过输入框宽度；上传中 / 已就绪 / 失败均有状态提示。
+- **指令不占输入框**：输入框内只显示一个隐藏的 `🖼️` 引用标记，不显示
+  `请调用 mcp__deepseek-vision__…` 长文本。
+- **无文字发送**：用户没有输入任何要求就直接发送时，引用自动展开为预设指令——
+  单图调用 `analyze_image`，多图调用 `compare_images`。
+- **有文字发送**：用户已输入自己的问题（如“这是什么动物？”）时，只传递图片路径，
+  不注入预设指令，模型按用户的问题选择工具与任务。
+- **发送后自动清理**：消息发送成功后缩略图卡带自动关闭并释放本地预览；发送失败时
+  保留缩略图，避免丢失图片。
+- **手动移除**：点击缩略图右上角 × 可移除该图片，并同步撤销输入框内的引用；
+  多图移除一张后自动重建剩余图片的指令。
 
 > **安装耗时预期**：正式 npm Bundle 的普通安装目标是 1-3 分钟；系统缺少可用
 > Python 时，首次下载隔离 CPython 可能再花 2-8 分钟，之后复用缓存。README 顶部的
@@ -561,6 +580,14 @@ mkdir -p ~/.dsh/skills && cp -r skills/vision ~/.dsh/skills/
 如果配置正确，你应该看到模型先调用 `analyze_image` 工具，再基于返回结果回答。
 也可以直接问「看看我刚复制的截图」测试剪贴板工具（`analyze_clipboard`）。
 
+粘贴/拖拽图片时按下面顺序检查输入框行为：
+
+1. 输入框上方出现缩略图卡带，宽度不超过输入框；
+2. 输入框内只有 `🖼️` 引用标记，没有 `请调用 mcp__deepseek-vision__…` 长文本；
+3. 不输入文字直接发送 → 自动调用 `analyze_image`（多图 `compare_images`）；
+4. 输入自己的问题再发送 → 只按你的问题分析，不注入预设指令；
+5. 发送成功后缩略图卡带自动关闭；发送失败则保留缩略图。
+
 ---
 
 ## 与 DSH 原生视觉 / 其他视觉插件的区别
@@ -574,6 +601,7 @@ mkdir -p ~/.dsh/skills && cp -r skills/vision ~/.dsh/skills/
 | **视觉模型的角色** | **纯辅助工具**：只在需要时把图片转成文字喂回 DeepSeek，不参与决策 | 部分方案把视觉能力做成「主路由」干预对话流程 |
 | **默认模型** | **智谱免费 `glm-4.6v-flash`**（当前免费视觉模型里效果最好），开箱即用 | 部分方案默认付费模型或需要自行找免费路由 |
 | **配置方式** | **DSH 可视化配置页**（设置 → 插件 → DeepSeek Vision）：多服务商、主/备用 Key、独立测试，无需改文件 | 多为手写 cordis.yml / 环境变量 |
+| **DSH 输入体验** | 缩略图卡带不超输入框、指令不显示在输入框；无文字自动预设指令，有文字只传图片路径，发送后自动清理 | 常把长指令直接写入输入框 |
 | **缓存与限流容错** | 内置 LRU 结果缓存（同图秒回 `cached=true`）+ 多 Key 轮换 + 模型降级 + 429 指数退避 + 熔断 | 部分方案无缓存、429 直接失败 |
 | **运行方式** | 独立 MCP Server（Python wheel 内置于插件，自动引导 Python 运行时），任意 MCP 客户端可用 | 多为纯 JS 插件，仅限 DSH 内使用 |
 | **Key 安全** | Key 存 DSH 官方凭据存储，不落库、不入日志、不进模型上下文 | 部分方案 Key 明文存配置文件 |
@@ -676,7 +704,7 @@ deepseek-vision-mcp/
 │   ├── test_mcp.sh             # Mac/Linux 完整验收包装脚本
 │   └── verify_install.py       # 跨平台 MCP + 真实 API + 缓存验收
 ├── plugins/
-│   └── dsh-plugin-deepseek-vision/  # DSH Bundle（粘贴/拖拽 + 托管 Python runtime）
+│   └── dsh-plugin-deepseek-vision/  # DSH Bundle（缩略图卡带 + 隐藏指令引用 + 托管 Python runtime）
 ├── docs/                       # 项目交接日志 / 发布流程 / 对比测试 / 截图
 ├── tests/                      # pytest 测试（94 个用例）
 ├── SECURITY.md                # 漏洞报告方式与发布安全清单

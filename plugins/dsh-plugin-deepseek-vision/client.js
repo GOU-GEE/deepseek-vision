@@ -17,6 +17,13 @@ window.__ModuleLoader__.load({
     const headerStyle = { appearance: 'none', width: '100%', font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer', background: 'transparent', border: 0, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }
     const fieldStyle = { width: '100%', height: 34, boxSizing: 'border-box', padding: '0 12px', borderRadius: 8, border: '1px solid var(--dsw-alias-border-l2, #d0d7de)', background: 'var(--dsw-alias-bg-layer-3, transparent)', color: 'var(--dsw-alias-label-primary, inherit)', font: 'inherit', fontSize: 13 }
     const buttonStyle = { appearance: 'none', padding: '5px 14px', borderRadius: 8, border: '1px solid var(--dsw-alias-border-l2, #d0d7de)', background: 'transparent', color: 'var(--dsw-alias-label-secondary, inherit)', cursor: 'pointer', font: 'inherit', fontSize: 13, lineHeight: 1.5 }
+    const previewDockStyle = { boxSizing: 'border-box', display: 'flex', alignItems: 'stretch', gap: 8, width: 'calc(100% - var(--dsh-composer-side-clearance, 0px) - var(--dsh-composer-side-clearance, 0px) - var(--dsh-composer-dock-inset, 10px) - var(--dsh-composer-dock-inset, 10px))', maxWidth: 'calc(var(--dsh-composer-card-max-width, 760px) - var(--dsh-composer-dock-inset, 10px) - var(--dsh-composer-dock-inset, 10px))', margin: '0 auto calc(0px - var(--dsh-composer-stack-gap, 10px) - 3px)', padding: '8px var(--dsh-composer-dock-inset, 10px)', overflowX: 'auto', background: 'var(--dsw-alias-bg-layer-3, transparent)', border: '1px solid var(--dsw-alias-border-l2, #d0d7de)', borderRadius: '12px 12px 0 0', borderBottom: 'none' }
+    const previewItemStyle = { position: 'relative', flex: 'none', width: 76, display: 'grid', gap: 4, justifyItems: 'center' }
+    const previewFrameStyle = { position: 'relative', width: 64, height: 64, display: 'block' }
+    const previewImageStyle = { width: 64, height: 64, objectFit: 'cover', display: 'block', borderRadius: 8, border: '1px solid var(--dsw-alias-border-l2, #d0d7de)', background: 'var(--dsw-alias-bg-layer-2, #f6f8fa)' }
+    const previewRemoveStyle = { position: 'absolute', top: -6, right: -6, width: 20, height: 20, padding: 0, display: 'grid', placeItems: 'center', appearance: 'none', border: '1px solid var(--dsw-alias-border-l2, #d0d7de)', borderRadius: '999px', background: 'var(--dsw-alias-bg-layer-2, #fff)', color: 'var(--dsw-alias-label-secondary, inherit)', cursor: 'pointer', fontSize: 13, lineHeight: 1, zIndex: 1 }
+    const previewBadgeStyle = { position: 'absolute', inset: 'auto 0 0 auto', margin: '0 3px 3px 0', padding: '1px 5px', borderRadius: 999, fontSize: 11, lineHeight: '16px', background: 'var(--dsw-alias-state-business-tertiary, rgba(38,132,255,.16))', color: 'var(--dsw-alias-label-primary-bluish, #0969da)' }
+    const previewNameStyle = { maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11, lineHeight: '14px', color: 'var(--dsw-alias-label-tertiary, #777)' }
 
     function clipboardImages(event) {
       return Array.from(event.clipboardData?.items ?? [])
@@ -46,21 +53,222 @@ window.__ModuleLoader__.load({
       return body.path
     }
 
-    function insertText(target, text) {
-      const element = target?.matches?.('textarea,input') ? target : document.activeElement
-      if (!element?.matches?.('textarea,input')) return false
-      element.focus()
-      let inserted = false
+    const REFERENCE_SOURCE = 'deepseek-vision'
+    const previewListeners = new Set()
+    let previewItems = []
+    let previewSequence = 0
+    let batchSequence = 0
+    let services = null
+    let activeSessionId = null
+    const insertedBatches = new Map()
+
+    function publicPreview(item) {
+      return {
+        id: item.id,
+        batchId: item.batchId,
+        name: item.name,
+        size: item.size,
+        type: item.type,
+        objectUrl: item.objectUrl,
+        path: item.path,
+        status: item.status,
+        error: item.error,
+      }
+    }
+
+    function emitPreviews() {
+      const snapshot = previewItems.map(publicPreview)
+      for (const listener of previewListeners) listener(snapshot)
+    }
+
+    function subscribePreviews(listener) {
+      previewListeners.add(listener)
+      return () => previewListeners.delete(listener)
+    }
+
+    function createObjectUrl(file) {
       try {
-        inserted = document.execCommand('insertText', false, text)
+        return URL.createObjectURL?.(file) ?? ''
       } catch {
-        inserted = false
+        return ''
       }
-      if (!inserted) {
-        const prototype = element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
-        Object.getOwnPropertyDescriptor(prototype, 'value').set.call(element, `${element.value}${text}`)
-        element.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+
+    function revokeObjectUrl(url) {
+      if (!url) return
+      try {
+        URL.revokeObjectURL?.(url)
+      } catch {
+        // Revocation is best-effort; the browser releases it with the document.
       }
+    }
+
+    function inputSnapshot() {
+      if (!services?.sessions || !services?.conversation || !activeSessionId) return null
+      try {
+        const actx = services.sessions.scope(activeSessionId)
+        if (!actx) return null
+        const input = services.conversation.input.for(actx)
+        const state = input?.state?.getSnapshot?.()
+        return state ? { input, state } : null
+      } catch {
+        return null
+      }
+    }
+
+    function referenceLabel(paths) {
+      return paths.length > 1 ? `🖼️×${paths.length}` : '🖼️'
+    }
+
+    function insertPreviewReference(batchId, paths) {
+      const resolved = inputSnapshot()
+      if (!resolved || typeof resolved.input.insertReference !== 'function') return false
+      const span = { start: resolved.state.draft.length, end: resolved.state.draft.length, draftRev: resolved.state.draftRev }
+      const inserted = resolved.input.insertReference({
+        source: REFERENCE_SOURCE,
+        ref: batchId,
+        label: referenceLabel(paths),
+        clipboardText: '',
+      }, span)
+      if (inserted) insertedBatches.set(batchId, paths)
+      return inserted
+    }
+
+    function replacePreviewReference(batchId, paths) {
+      const resolved = inputSnapshot()
+      if (!resolved) {
+        insertedBatches.delete(batchId)
+        return false
+      }
+      const occurrence = resolved.state.occurrences.find(candidate => candidate.source === REFERENCE_SOURCE && candidate.ref === batchId)
+      if (occurrence && typeof resolved.input.setDraft === 'function') {
+        const draft = resolved.state.draft
+        resolved.input.setDraft(draft.slice(0, occurrence.offset) + draft.slice(occurrence.offset + 1))
+      }
+      if (paths.length > 0) return insertPreviewReference(batchId, paths)
+      insertedBatches.delete(batchId)
+      return true
+    }
+
+    function removeAllPreviewReferences() {
+      const resolved = inputSnapshot()
+      if (!resolved) {
+        insertedBatches.clear()
+        return
+      }
+      const occurrences = resolved.state.occurrences
+        .filter(candidate => candidate.source === REFERENCE_SOURCE)
+        .sort((a, b) => b.offset - a.offset)
+      if (occurrences.length > 0 && typeof resolved.input.setDraft === 'function') {
+        let draft = resolved.state.draft
+        for (const occurrence of occurrences) draft = draft.slice(0, occurrence.offset) + draft.slice(occurrence.offset + 1)
+        resolved.input.setDraft(draft)
+      }
+      insertedBatches.clear()
+    }
+
+    function resetPreviews() {
+      removeAllPreviewReferences()
+      for (const item of previewItems) revokeObjectUrl(item.objectUrl)
+      previewItems = []
+      emitPreviews()
+    }
+
+    function instructionForPaths(paths) {
+      return `请调用 mcp__deepseek-vision__${paths.length > 1 ? 'compare_images' : 'analyze_image'} 分析我刚粘贴的图片：${paths.join(' ')} `
+    }
+
+    function draftWithoutOccurrences(state) {
+      let draft = state.draft
+      const occurrences = [...state.occurrences].sort((a, b) => b.offset - a.offset)
+      for (const occurrence of occurrences) {
+        if (occurrence.offset < 0 || occurrence.offset >= draft.length) continue
+        draft = draft.slice(0, occurrence.offset) + draft.slice(occurrence.offset + 1)
+      }
+      return draft
+    }
+
+    function serializeReference(ref) {
+      const paths = insertedBatches.get(ref)
+      if (!paths || paths.length === 0) throw new Error('DeepSeek Vision 图片引用已失效，请重新粘贴图片')
+      const resolved = inputSnapshot()
+      const userText = resolved ? draftWithoutOccurrences(resolved.state).trim() : ''
+      // The user typed their own request: only surface the uploaded image
+      // paths, never the preset tool-call command.
+      if (userText) return `🖼️ 图片路径：${paths.join(' ')}`
+      return instructionForPaths(paths)
+    }
+
+    function watchInputForSend() {
+      const resolved = inputSnapshot()
+      if (!resolved?.input?.state?.subscribe) return () => undefined
+      const read = () => resolved.input.state.getSnapshot()
+      let hadReference = read().occurrences.some(candidate => candidate.source === REFERENCE_SOURCE)
+      let clearTimer = null
+      const unsubscribe = resolved.input.state.subscribe(() => {
+        const next = read()
+        const hasReference = next.occurrences.some(candidate => candidate.source === REFERENCE_SOURCE)
+        if (hadReference && !hasReference && next.phase === 'plain') {
+          // A synchronous remove+reinsert (thumbnail × during a multi-image
+          // batch) also briefly drops the reference; re-check on the next
+          // macrotask so only a real send (reference stays gone) clears.
+          clearTimer = setTimeout(() => {
+            const after = read()
+            if (after.phase === 'plain' && !after.occurrences.some(candidate => candidate.source === REFERENCE_SOURCE)) resetPreviews()
+          }, 0)
+        }
+        hadReference = hasReference
+      })
+      return () => {
+        if (clearTimer !== null) clearTimeout(clearTimer)
+        unsubscribe()
+      }
+    }
+
+    const visionReferenceSource = {
+      trigger: '/',
+      name: REFERENCE_SOURCE,
+      order: 900,
+      candidates: async () => [],
+      onPick: () => undefined,
+      codec: {
+        clipboardText: () => '',
+        serialize: async ref => serializeReference(ref),
+      },
+    }
+
+    function addPreview(file, batchId) {
+      const item = {
+        id: `vision-${++previewSequence}`,
+        batchId,
+        name: file.name || 'image',
+        size: file.size || 0,
+        type: file.type || '',
+        objectUrl: createObjectUrl(file),
+        path: null,
+        status: 'uploading',
+        error: '',
+      }
+      previewItems.push(item)
+      emitPreviews()
+      return item
+    }
+
+    function patchPreview(id, patch) {
+      const item = previewItems.find(candidate => candidate.id === id)
+      if (!item) return
+      Object.assign(item, patch)
+      emitPreviews()
+    }
+
+    function removePreview(id) {
+      const index = previewItems.findIndex(candidate => candidate.id === id)
+      if (index < 0) return false
+      const [item] = previewItems.splice(index, 1)
+      revokeObjectUrl(item.objectUrl)
+      const remaining = previewItems.filter(candidate => candidate.batchId === item.batchId && candidate.path)
+      replacePreviewReference(item.batchId, remaining.map(candidate => candidate.path))
+      emitPreviews()
       return true
     }
 
@@ -90,10 +298,19 @@ window.__ModuleLoader__.load({
       if (images.length === 0 || !targetsDeepSeek()) return
       event.preventDefault()
       event.stopImmediatePropagation()
+      const batchId = `vision-batch-${++batchSequence}`
+      const entries = images.map(file => ({ file, item: addPreview(file, batchId) }))
       try {
-        const paths = await Promise.all(images.map(upload))
-        const instruction = `请调用 mcp__deepseek-vision__${paths.length > 1 ? 'compare_images' : 'analyze_image'} 分析我刚粘贴的图片：${paths.join(' ')} `
-        insertText(event.target, instruction)
+        await Promise.all(entries.map(async ({ file, item }) => {
+          try {
+            const path = await upload(file)
+            patchPreview(item.id, { path, status: 'ready', error: '' })
+          } catch (error) {
+            patchPreview(item.id, { status: 'error', error: error?.message ?? String(error) })
+          }
+        }))
+        const ready = previewItems.filter(item => item.batchId === batchId && item.path)
+        if (ready.length > 0) insertPreviewReference(batchId, ready.map(item => item.path))
       } catch (error) {
         console.error(`[deepseek-vision] ${action} failed: ${error?.message ?? error}`)
       } finally {
@@ -303,7 +520,42 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function VisionPreviewDock() {
+      const [items, setItems] = useState(() => previewItems.map(publicPreview))
+      useEffect(() => {
+        const offPreviews = subscribePreviews(snapshot => setItems(snapshot))
+        const offInput = watchInputForSend()
+        return () => {
+          offPreviews()
+          offInput()
+        }
+      }, [])
+      if (items.length === 0) return null
+      return h('div', { style: previewDockStyle, 'aria-label': 'DeepSeek Vision 图片预览' },
+        items.map(item => h('div', { key: item.id, style: previewItemStyle },
+          h('span', { style: previewFrameStyle },
+            item.objectUrl ? h('img', { src: item.objectUrl, alt: item.name, style: previewImageStyle }) : h('span', { style: previewImageStyle, 'aria-hidden': true }),
+            h('button', {
+              type: 'button',
+              'aria-label': `移除图片：${item.name}`,
+              title: '移除图片',
+              style: previewRemoveStyle,
+              onClick: () => removePreview(item.id),
+            }, '×'),
+            h('span', { style: item.status === 'error' ? { ...previewBadgeStyle, background: 'var(--dsw-alias-state-error-tertiary, rgba(207,34,46,.12))', color: 'var(--dsw-alias-state-error-primary, #cf222e)' } : previewBadgeStyle },
+              item.status === 'ready' ? '已就绪' : item.status === 'error' ? '上传失败' : '上传中'),
+          ),
+          h('span', { style: previewNameStyle, title: item.error || item.name }, item.name),
+        )),
+      )
+    }
+
     function apply(ctx) {
+      services = {
+        sessions: ctx.sessions,
+        conversation: ctx.conversation,
+        inputTriggers: ctx.inputTriggers,
+      }
       document.addEventListener('paste', onPaste, true)
       document.addEventListener('drop', onDrop, true)
       document.addEventListener('dragover', onDragOver, true)
@@ -311,18 +563,38 @@ window.__ModuleLoader__.load({
         document.removeEventListener('paste', onPaste, true)
         document.removeEventListener('drop', onDrop, true)
         document.removeEventListener('dragover', onDragOver, true)
+        resetPreviews()
+        services = null
+        activeSessionId = null
       }, 'deepseek-vision: image listeners')
+      ctx.effect?.(() => services?.inputTriggers?.registerSource?.(visionReferenceSource), 'deepseek-vision: reference source')
       ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
         name: 'settings.plugin.item',
         id: 'deepseek-vision',
         order: 25,
         inject: () => ({}),
       }, VisionSettingsCard))
+      ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+        name: 'conversation.input.dock',
+        id: 'deepseek-vision-preview',
+        order: 10,
+        inject: (sessionId) => {
+          if (typeof sessionId === 'string') activeSessionId = sessionId
+          return {}
+        },
+      }, VisionPreviewDock))
     }
 
     module.exports.apply = apply
-    module.exports.inject = ['slots']
+    module.exports.inject = ['slots', 'sessions', 'conversation', 'inputTriggers']
     module.exports.PROVIDERS = PROVIDERS
+    module.exports.previewInternals = {
+      list: () => previewItems.map(publicPreview),
+      remove: removePreview,
+      subscribe: subscribePreviews,
+      reset: resetPreviews,
+      watchInput: watchInputForSend,
+    }
     return module.exports
   },
 })

@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
+const NativeURL = globalThis.URL
+
 async function loadClient() {
+  globalThis.URL = NativeURL
   let specification
   globalThis.window = { __ModuleLoader__: { load(value) { specification = value } } }
   const source = await readFile(new URL('../client.js', import.meta.url), 'utf8')
@@ -21,32 +24,104 @@ async function loadClient() {
   })
 }
 
-test('client registers image listeners and a DSH settings card', async () => {
-  const client = await loadClient()
-  assert.deepEqual(client.inject, ['slots'])
-  assert.equal(client.PROVIDERS.zhipu.model, 'glm-4.6v-flash')
-  let registered
-  const listeners = []
-  globalThis.document = {
-    addEventListener: (...args) => listeners.push(args),
+function textDeepSeekDocument(target, listeners) {
+  return {
+    activeElement: target,
+    execCommand: () => false,
+    querySelectorAll: () => [{ getAttribute: () => 'DeepSeek Chat' }],
+    addEventListener: (name, fn) => listeners.set(name, fn),
     removeEventListener: () => undefined,
+    dispatchEvent: () => undefined,
   }
-  client.apply({
+}
+
+function makeInputFacade() {
+  const state = { draft: '', draftRev: 0, occurrences: [], phase: 'plain' }
+  const listeners = new Set()
+  const inserted = []
+  const setDrafts = []
+  const notify = () => {
+    for (const listener of [...listeners]) listener()
+  }
+  const input = {
+    state: {
+      getSnapshot: () => ({ ...state, occurrences: [...state.occurrences] }),
+      subscribe: listener => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    },
+    insertReference(reference, span) {
+      if (span.draftRev !== state.draftRev) return false
+      state.draft = `${state.draft.slice(0, span.end)}\uFFFC${state.draft.slice(span.end)}`
+      state.occurrences.push({
+        source: reference.source,
+        ref: reference.ref,
+        label: reference.label,
+        clipboardText: reference.clipboardText,
+        offset: span.end,
+      })
+      state.draftRev += 1
+      inserted.push({ reference, span })
+      return true
+    },
+    setDraft(draft) {
+      setDrafts.push(draft)
+      state.draft = draft
+      state.draftRev += 1
+      // The production machine rebuilds occurrences; for this contract test
+      // our plugin always reinserts the survivors right after this call.
+      state.occurrences = []
+    },
+  }
+  return { state, input, inserted, setDrafts, notify }
+}
+
+function applyWithHarness(client, listeners, facade, extra) {
+  const injectedSlots = []
+  const registeredSlots = []
+  const registeredSources = []
+  const actx = { scope: 'session-test' }
+  const ctx = {
     effect: effect => effect(),
     slots: {
       inject: (name, effect) => {
-        assert.equal(name, 'settings.plugin.item')
+        injectedSlots.push(name)
         return effect()
       },
       register: (options, component) => {
-        registered = { options, component }
+        registeredSlots.push({ options, component })
         return () => undefined
       },
     },
-  })
-  assert.deepEqual(listeners.map(([name]) => name), ['paste', 'drop', 'dragover'])
-  assert.equal(registered.options.id, 'deepseek-vision')
-  assert.equal(typeof registered.component, 'function')
+    sessions: { scope: id => (id === 'session-test' ? actx : undefined) },
+    conversation: { input: { for: () => facade.input } },
+    inputTriggers: { registerSource: source => { registeredSources.push(source); return () => undefined } },
+    ...extra,
+  }
+  client.apply(ctx)
+  const dock = registeredSlots.find(entry => entry.options.id === 'deepseek-vision-preview')
+  if (dock) assert.deepEqual(dock.options.inject('session-test'), {})
+  return { ctx, injectedSlots, registeredSlots, registeredSources }
+}
+
+test('client registers listeners, settings card, composer dock, and hidden reference codec', async () => {
+  const client = await loadClient()
+  assert.deepEqual(client.inject, ['slots', 'sessions', 'conversation', 'inputTriggers'])
+  assert.equal(client.PROVIDERS.zhipu.model, 'glm-4.6v-flash')
+  const listeners = new Map()
+  globalThis.document = {
+    addEventListener: (...args) => listeners.set(args[0], args[1]),
+    removeEventListener: () => undefined,
+  }
+  const facade = makeInputFacade()
+  const harness = applyWithHarness(client, listeners, facade)
+  assert.deepEqual([...listeners.keys()], ['paste', 'drop', 'dragover'])
+  assert.deepEqual(harness.injectedSlots, ['settings.plugin.item', 'conversation.input.dock'])
+  assert.ok(harness.registeredSlots.find(entry => entry.options.id === 'deepseek-vision'))
+  assert.equal(harness.registeredSources.length, 1)
+  assert.equal(harness.registeredSources[0].name, 'deepseek-vision')
+  assert.equal(await harness.registeredSources[0].codec.clipboardText('batch'), '')
 })
 
 test('intercepted image drop releases the native DSH overlay without a duplicate file', async () => {
@@ -65,17 +140,19 @@ test('intercepted image drop releases the native DSH overlay without a duplicate
     removeEventListener: () => undefined,
     dispatchEvent: event => synthetic.push(event),
   }
+  const facade = makeInputFacade()
   client.apply({
     effect: effect => effect(),
     slots: { inject: () => undefined },
+    sessions: { scope: () => undefined },
+    conversation: { input: { for: () => facade.input } },
+    inputTriggers: { registerSource: () => () => undefined },
   })
   const target = {
     matches: () => true,
     focus: () => undefined,
     dispatchEvent: event => {
       synthetic.push(event)
-      // Mirror DSH rc.5's document-level drop contract: it only resets when
-      // dataTransfer.types contains Files, then consumes dataTransfer.files.
       if (event.dataTransfer?.types.includes('Files')) {
         nativeOverlayVisible = false
         nativeAttachments += event.dataTransfer.files.length
@@ -94,4 +171,183 @@ test('intercepted image drop releases the native DSH overlay without a duplicate
   assert.equal(synthetic[0].dataTransfer.files.length, 0)
   assert.equal(nativeOverlayVisible, false)
   assert.equal(nativeAttachments, 0)
+})
+
+test('paste inserts a hidden image reference instead of visible instruction text', async () => {
+  const client = await loadClient()
+  const listeners = new Map()
+  const facade = makeInputFacade()
+  const revoked = []
+  globalThis.Event = class { constructor(type, options) { this.type = type; Object.assign(this, options) } }
+  globalThis.URL = { createObjectURL: file => `blob:${file.name}`, revokeObjectURL: url => revoked.push(url) }
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ path: '/tmp/paste-a.jpg' }) })
+  const target = {
+    matches: () => true,
+    focus: () => undefined,
+    dispatchEvent: () => undefined,
+  }
+  globalThis.document = textDeepSeekDocument(target, listeners)
+  const harness = applyWithHarness(client, listeners, facade)
+  await listeners.get('paste')({
+    target,
+    clipboardData: { items: [{ kind: 'file', getAsFile: () => ({ name: 'a.jpg', type: 'image/jpeg', size: 100, arrayBuffer: async () => new ArrayBuffer(1) }) }] },
+    preventDefault: () => undefined,
+    stopImmediatePropagation: () => undefined,
+  })
+  const previews = client.previewInternals.list()
+  assert.equal(previews.length, 1)
+  assert.equal(previews[0].status, 'ready')
+  assert.equal(facade.state.draft, '\uFFFC')
+  assert.ok(!facade.state.draft.includes('analyze_image'))
+  assert.equal(facade.state.occurrences.length, 1)
+  assert.equal(facade.state.occurrences[0].source, 'deepseek-vision')
+  assert.equal(facade.state.occurrences[0].label, '🖼️')
+  const modelForm = await harness.registeredSources[0].codec.serialize(facade.state.occurrences[0].ref)
+  assert.ok(modelForm.includes('mcp__deepseek-vision__analyze_image'))
+  assert.ok(modelForm.includes('/tmp/paste-a.jpg'))
+  assert.equal(client.previewInternals.remove(previews[0].id), true)
+  assert.equal(facade.state.draft, '')
+  assert.deepEqual(revoked, ['blob:a.jpg'])
+})
+
+test('multi-image paste serializes compare_images and removal rebuilds the hidden reference', async () => {
+  const client = await loadClient()
+  const listeners = new Map()
+  const facade = makeInputFacade()
+  globalThis.Event = class { constructor(type, options) { this.type = type; Object.assign(this, options) } }
+  globalThis.URL = { createObjectURL: file => `blob:${file.name}`, revokeObjectURL: () => undefined }
+  const pathForBody = { a: '/tmp/a.jpg', b: '/tmp/b.jpg' }
+  globalThis.fetch = async (_route, options) => ({ ok: true, json: async () => ({ path: pathForBody[options.body] }) })
+  const target = {
+    matches: () => true,
+    focus: () => undefined,
+    dispatchEvent: () => undefined,
+  }
+  globalThis.document = textDeepSeekDocument(target, listeners)
+  const harness = applyWithHarness(client, listeners, facade)
+  const file = (name, body) => ({ name, type: 'image/jpeg', size: 100, arrayBuffer: async () => body })
+  await listeners.get('paste')({
+    target,
+    clipboardData: {
+      items: [
+        { kind: 'file', getAsFile: () => file('a.jpg', 'a') },
+        { kind: 'file', getAsFile: () => file('b.jpg', 'b') },
+      ],
+    },
+    preventDefault: () => undefined,
+    stopImmediatePropagation: () => undefined,
+  })
+  assert.equal(client.previewInternals.list().length, 2)
+  assert.equal(facade.state.occurrences.length, 1)
+  assert.equal(facade.state.occurrences[0].label, '🖼️×2')
+  const firstRef = facade.state.occurrences[0].ref
+  let modelForm = await harness.registeredSources[0].codec.serialize(firstRef)
+  assert.ok(modelForm.includes('mcp__deepseek-vision__compare_images'))
+  assert.ok(modelForm.includes('/tmp/a.jpg'))
+  assert.ok(modelForm.includes('/tmp/b.jpg'))
+  client.previewInternals.remove(client.previewInternals.list()[0].id)
+  assert.equal(facade.state.occurrences.length, 1)
+  assert.equal(facade.state.occurrences[0].label, '🖼️')
+  modelForm = await harness.registeredSources[0].codec.serialize(facade.state.occurrences[0].ref)
+  assert.ok(modelForm.includes('mcp__deepseek-vision__analyze_image'))
+  assert.ok(!modelForm.includes('/tmp/a.jpg'))
+  assert.ok(modelForm.includes('/tmp/b.jpg'))
+})
+
+test('upload failure keeps an error thumbnail and inserts no hidden reference', async () => {
+  const client = await loadClient()
+  const listeners = new Map()
+  const facade = makeInputFacade()
+  globalThis.Event = class { constructor(type, options) { this.type = type; Object.assign(this, options) } }
+  globalThis.URL = { createObjectURL: file => `blob:${file.name}`, revokeObjectURL: () => undefined }
+  globalThis.fetch = async () => ({ ok: false, json: async () => ({ error: '模拟上传失败' }) })
+  const target = {
+    matches: () => true,
+    focus: () => undefined,
+    dispatchEvent: () => undefined,
+  }
+  globalThis.document = textDeepSeekDocument(target, listeners)
+  applyWithHarness(client, listeners, facade)
+  await listeners.get('paste')({
+    target,
+    clipboardData: { items: [{ kind: 'file', getAsFile: () => ({ name: 'a.jpg', type: 'image/jpeg', size: 1, arrayBuffer: async () => new ArrayBuffer(1) }) }] },
+    preventDefault: () => undefined,
+    stopImmediatePropagation: () => undefined,
+  })
+  const previews = client.previewInternals.list()
+  assert.equal(previews.length, 1)
+  assert.equal(previews[0].status, 'error')
+  assert.equal(previews[0].error, '模拟上传失败')
+  assert.equal(facade.state.draft, '')
+  assert.equal(facade.state.occurrences.length, 0)
+  client.previewInternals.reset()
+  assert.deepEqual(client.previewInternals.list(), [])
+  assert.equal(facade.state.draft, '')
+})
+
+test('reference serializes the preset command only when the user typed nothing', async () => {
+  const client = await loadClient()
+  const listeners = new Map()
+  const facade = makeInputFacade()
+  globalThis.Event = class { constructor(type, options) { this.type = type; Object.assign(this, options) } }
+  globalThis.URL = { createObjectURL: file => `blob:${file.name}`, revokeObjectURL: () => undefined }
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ path: '/tmp/paste-a.jpg' }) })
+  const target = { matches: () => true, focus: () => undefined, dispatchEvent: () => undefined }
+  globalThis.document = textDeepSeekDocument(target, listeners)
+  const harness = applyWithHarness(client, listeners, facade)
+  await listeners.get('paste')({
+    target,
+    clipboardData: { items: [{ kind: 'file', getAsFile: () => ({ name: 'a.jpg', type: 'image/jpeg', size: 100, arrayBuffer: async () => new ArrayBuffer(1) }) }] },
+    preventDefault: () => undefined,
+    stopImmediatePropagation: () => undefined,
+  })
+  const ref = facade.state.occurrences[0].ref
+  let modelForm = await harness.registeredSources[0].codec.serialize(ref)
+  assert.ok(modelForm.includes('mcp__deepseek-vision__analyze_image'))
+
+  facade.state.draft = '\uFFFC 这个是什么意思'
+  modelForm = await harness.registeredSources[0].codec.serialize(ref)
+  assert.ok(!modelForm.includes('mcp__deepseek-vision__analyze_image'))
+  assert.ok(modelForm.includes('/tmp/paste-a.jpg'))
+  assert.ok(modelForm.includes('🖼️'))
+})
+
+test('successful send auto-clears the thumbnail strip; a failed send keeps it', async () => {
+  const client = await loadClient()
+  const listeners = new Map()
+  const facade = makeInputFacade()
+  const revoked = []
+  globalThis.Event = class { constructor(type, options) { this.type = type; Object.assign(this, options) } }
+  globalThis.URL = { createObjectURL: file => `blob:${file.name}`, revokeObjectURL: url => revoked.push(url) }
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ path: '/tmp/paste-a.jpg' }) })
+  const target = { matches: () => true, focus: () => undefined, dispatchEvent: () => undefined }
+  globalThis.document = textDeepSeekDocument(target, listeners)
+  applyWithHarness(client, listeners, facade)
+  await listeners.get('paste')({
+    target,
+    clipboardData: { items: [{ kind: 'file', getAsFile: () => ({ name: 'a.jpg', type: 'image/jpeg', size: 100, arrayBuffer: async () => new ArrayBuffer(1) }) }] },
+    preventDefault: () => undefined,
+    stopImmediatePropagation: () => undefined,
+  })
+  assert.equal(client.previewInternals.list().length, 1)
+  client.previewInternals.watchInput()
+  const originalRef = facade.state.occurrences[0].ref
+
+  // A synchronous drop+reinsert (multi-image remove path) must NOT clear.
+  facade.state.occurrences = []
+  facade.state.draft = ''
+  facade.notify()
+  facade.state.occurrences = [{ source: 'deepseek-vision', ref: originalRef, label: '🖼️', clipboardText: '', offset: 0 }]
+  facade.state.draft = '\uFFFC'
+  facade.notify()
+  await new Promise(resolve => setTimeout(resolve, 5))
+  assert.equal(client.previewInternals.list().length, 1)
+
+  // Successful send: the reference disappears and stays gone.
+  facade.state.occurrences = []
+  facade.state.draft = ''
+  facade.notify()
+  await new Promise(resolve => setTimeout(resolve, 5))
+  assert.deepEqual(client.previewInternals.list(), [])
+  assert.deepEqual(revoked, ['blob:a.jpg'])
 })

@@ -7,7 +7,11 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
 ## 能力
 
 - DSH Web 中直接粘贴或拖入 PNG/JPEG/GIF/WebP；插件保存为权限 `0600` 的临时文件，
-  并把明确的视觉工具调用指令插入输入框。
+  并在输入框上方显示宽度不超过输入框的缩略图卡带。
+- 输入框内只保留隐藏的 `🖼️` 引用标记，不显示工具调用长指令；用户不输入文字时
+  发送自动注入预设指令，用户已输入自己的问题时只传图片路径，不覆盖用户意图。
+- 发送成功后缩略图卡带自动清理并释放本地预览；发送失败保留缩略图。点击缩略图
+  右上角 × 可移除图片并同步撤销引用，多图移除后自动重建剩余指令。
 - 自动安装版本锁定的 Python MCP 后端到 `$DSH_HOME/cache`，无需克隆仓库、创建
   虚拟环境或修改 Python 绝对路径。
 - 保留 `analyze_image`、`analyze_clipboard`、`compare_images`、`vision_status`
@@ -32,7 +36,7 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
 
 ```bash
 export VISION_API_KEY='你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.2
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
@@ -40,11 +44,11 @@ Windows PowerShell：
 
 ```powershell
 $env:VISION_API_KEY = '你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.2
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
-> `0.3.0` 发布到 npm 前，请在本仓库运行
+> 安装 `main` 分支尚未发布的功能时，请在本仓库运行
 > `VISION_BUILD_PYTHON=python3 npm pack`，再把生成的 `.tgz` 安装进 profile。
 > Bundle 自带同版本 Python wheel，避免前后端版本漂移。
 
@@ -85,13 +89,16 @@ VISION_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 
 ## 验证
 
-启动后选择文本版 DeepSeek，把一张截图粘贴或拖入输入框。输入框应出现类似：
+启动后选择文本版 DeepSeek，把一张截图粘贴或拖入输入框，按顺序确认：
 
-```text
-请调用 mcp__deepseek-vision__analyze_image 分析我刚粘贴的图片：/tmp/deepseek-vision-dsh-.../paste.png
-```
+1. 输入框上方出现缩略图卡带，宽度不超过输入框；
+2. 输入框内只有 `🖼️` 引用标记，不出现工具指令长文本；
+3. 不输入文字直接发送：自动调用 `analyze_image`（多图为 `compare_images`）；
+4. 输入自己的问题再发送：插件只传图片路径，模型按问题调用工具；
+5. 发送成功后缩略图卡带自动关闭；发送失败时保留缩略图；
+6. 点击缩略图右上角 × 可移除图片并撤销引用。
 
-发送后应出现视觉工具调用。也可运行：
+也可运行：
 
 ```bash
 dsh --profile web --dump-config | grep deepseek-vision
@@ -102,6 +109,7 @@ dsh --profile web --dump-config | grep deepseek-vision
 - 图片会发送给用户配置的第三方视觉模型服务。
 - 粘贴接口限制为 20 MB、拒绝跨站浏览器请求，并用魔数而不是扩展名识别图片；
   权限 `0600` 的临时目录会在一小时后自动清理。
+- 缩略图预览使用浏览器本地 Object URL，移除或发送成功后立即释放，不额外上传。
 - URL 默认拒绝回环、私网、元数据地址和 DNS rebinding。
 - API Key 不写入 npm 包、配置 patch、日志或模型上下文。
 
