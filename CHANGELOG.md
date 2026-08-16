@@ -1,6 +1,15 @@
 # Changelog
 
-## v0.4.0（2026-08-16）— 当前 latest
+## v0.4.1（2026-08-16）— 当前 latest
+
+### ✨ 新增
+
+- 配置页新增 **Google Gemini 免费服务商预设**：OpenAI 兼容端点
+  （`https://generativelanguage.googleapis.com/v1beta/openai/`），推荐模型
+  `gemini-2.5-flash`（免费层，无需绑卡，AI Studio 获取 Key；国内访问需代理）。
+  设置页下拉直接选择，无需手填 Base URL。
+
+## v0.4.0（2026-08-16）
 
 ### ✨ DSH 输入框体验增强
 

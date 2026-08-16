@@ -37,7 +37,7 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
 
 ```bash
 export VISION_API_KEY='你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.1
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
@@ -45,7 +45,7 @@ Windows PowerShell：
 
 ```powershell
 $env:VISION_API_KEY = '你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.0
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.1
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepseek-vision-mcp"
-version = "0.4.0"
+version = "0.4.1"
 description = "MCP Server that gives DeepSeek (and other text-only LLMs) vision capability via third-party OpenAI-compatible vision APIs"
 readme = "README.md"
 requires-python = ">=3.10"
