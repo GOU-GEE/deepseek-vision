@@ -14,6 +14,9 @@
 - [ ] ⚠️ **全局排查硬编码版本号**：`scripts/verify_dsh_plugin.py`（已改为动态读
       `__version__`，不要改回去）、`.github/workflows/test.yml`（tarball 名已改为
       动态取版本，不要改回去）。任何 `0.3.x` 硬编码在升版后都会挂 CI。
+- [ ] **更新文档**（随本次发布一起提交，别漏）：
+      `CHANGELOG.md`（新增本次版本条目）+ `docs/PROJECT_LOG.md`（第 2 节版本号、
+      第 6-7 节已完成/待办）。交接日志不过期，才能给新对话/新 Agent 准确信息。
 - [ ] 本地验证：`pytest -q` 全绿 + `npm test --prefix plugins/dsh-plugin-deepseek-vision`
       全绿 + `python scripts/verify_dsh_plugin.py` 输出 `[PASS]`
 - [ ] 推送到 `main`，等 test workflow 全绿（含 `dsh-plugin` job）
