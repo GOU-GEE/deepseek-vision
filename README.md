@@ -6,6 +6,7 @@
 [![npm version](https://img.shields.io/npm/v/dsh-plugin-deepseek-vision?color=CB3837&label=npm)](https://www.npmjs.com/package/dsh-plugin-deepseek-vision)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 给 **DeepSeek（及其他纯文本大模型）装上「眼睛」** 的开源 MCP Server。
 
