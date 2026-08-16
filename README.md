@@ -705,6 +705,7 @@ deepseek-vision-mcp/
 │   └── verify_install.py       # 跨平台 MCP + 真实 API + 缓存验收
 ├── plugins/
 │   └── dsh-plugin-deepseek-vision/  # DSH Bundle（缩略图卡带 + 隐藏指令引用 + 托管 Python runtime）
+├── docs/                       # 项目交接日志 / 发布流程 / 对比测试 / 截图
 ├── tests/                      # pytest 测试（94 个用例）
 ├── SECURITY.md                # 漏洞报告方式与发布安全清单
 └── .github/workflows/         # Python/Node/官方 DSH 安装测试与 PyPI/npm 发布
@@ -713,6 +714,9 @@ deepseek-vision-mcp/
 ---
 
 ## 开发与测试
+
+> 📋 维护者/新开发者请先读 **`docs/PROJECT_LOG.md`**（项目交接日志：环境、命令、坑、待办）；
+> 发布流程见 `docs/RELEASING.md`，对比测试见 `docs/BENCHMARK.md`。
 
 ```bash
 pip install -e ".[dev]"
