@@ -10,7 +10,8 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
   并在输入框上方显示宽度不超过输入框的缩略图卡带。
 - 输入框内只保留隐藏的 `🖼️` 引用标记，不显示工具调用长指令；用户不输入文字时
   发送自动注入预设指令，用户已输入自己的问题时只传图片路径，不覆盖用户意图。
-- 发送成功后缩略图卡带自动清理并释放本地预览；发送失败保留缩略图。点击缩略图
+- 发送成功后缩略图卡带自动清理并释放本地预览；发送未成功时图片不丢失（引用序列化
+  失败时缩略图与引用保留可重试，host 层失败时路径文本恢复回输入框）。点击缩略图
   右上角 × 可移除图片并同步撤销引用，多图移除后自动重建剩余指令。
 - 自动安装版本锁定的 Python MCP 后端到 `$DSH_HOME/cache`，无需克隆仓库、创建
   虚拟环境或修改 Python 绝对路径。
@@ -36,7 +37,7 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
 
 ```bash
 export VISION_API_KEY='你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.2
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.0
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
@@ -44,7 +45,7 @@ Windows PowerShell：
 
 ```powershell
 $env:VISION_API_KEY = '你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.2
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.0
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
@@ -95,7 +96,7 @@ VISION_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 2. 输入框内只有 `🖼️` 引用标记，不出现工具指令长文本；
 3. 不输入文字直接发送：自动调用 `analyze_image`（多图为 `compare_images`）；
 4. 输入自己的问题再发送：插件只传图片路径，模型按问题调用工具；
-5. 发送成功后缩略图卡带自动关闭；发送失败时保留缩略图；
+5. 发送成功后缩略图卡带自动关闭；发送未成功时图片不丢失（缩略图或路径保留）；
 6. 点击缩略图右上角 × 可移除图片并撤销引用。
 
 也可运行：

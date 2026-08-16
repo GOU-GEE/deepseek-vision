@@ -60,6 +60,10 @@ window.__ModuleLoader__.load({
     let batchSequence = 0
     let services = null
     let activeSessionId = null
+    // Last session id this plugin's dock was bound to; a change means the user
+    // switched conversations, so the previous session's preview strip must not
+    // linger in the new composer.
+    let boundSessionId = null
     const insertedBatches = new Map()
 
     function publicPreview(item) {
@@ -300,6 +304,11 @@ window.__ModuleLoader__.load({
       event.stopImmediatePropagation()
       const batchId = `vision-batch-${++batchSequence}`
       const entries = images.map(file => ({ file, item: addPreview(file, batchId) }))
+      // Snapshot the draft at upload start so the final reference insertion
+      // can tell "user typed/sent meanwhile" apart from "draft untouched".
+      const startSnapshot = inputSnapshot()?.state
+      const startDraft = startSnapshot?.draft ?? null
+      const startRev = startSnapshot?.draftRev ?? -1
       try {
         await Promise.all(entries.map(async ({ file, item }) => {
           try {
@@ -309,8 +318,29 @@ window.__ModuleLoader__.load({
             patchPreview(item.id, { status: 'error', error: error?.message ?? String(error) })
           }
         }))
+        const resolved = inputSnapshot()
+        const endDraft = resolved?.state?.draft ?? null
+        const endRev = resolved?.state?.draftRev ?? -1
+        // The draft was emptied by an edit or a send while uploads were in
+        // flight (a plain paste leaves it untouched: same text, same rev).
+        const draftWiped = endDraft === '' && (startDraft !== '' || endRev > startRev)
         const ready = previewItems.filter(item => item.batchId === batchId && item.path)
-        if (ready.length > 0) insertPreviewReference(batchId, ready.map(item => item.path))
+        if (ready.length > 0 && !draftWiped && resolved?.state?.phase === 'plain') {
+          // Idempotent rebuild: covers thumbnails removed mid-upload (the
+          // reference now matches the final ready set) and the plain insert.
+          replacePreviewReference(batchId, ready.map(item => item.path))
+        } else if (draftWiped) {
+          // Never inject a reference into a fresh post-send draft — it would
+          // silently attach the image to the NEXT message. Drop this batch's
+          // previews (the uploaded temp files are server-side cleaned later).
+          const doomed = previewItems.filter(item => item.batchId === batchId)
+          if (doomed.length > 0) {
+            previewItems = previewItems.filter(item => item.batchId !== batchId)
+            for (const item of doomed) revokeObjectUrl(item.objectUrl)
+            emitPreviews()
+          }
+          insertedBatches.delete(batchId)
+        }
       } catch (error) {
         console.error(`[deepseek-vision] ${action} failed: ${error?.message ?? error}`)
       } finally {
@@ -566,6 +596,7 @@ window.__ModuleLoader__.load({
         resetPreviews()
         services = null
         activeSessionId = null
+        boundSessionId = null
       }, 'deepseek-vision: image listeners')
       ctx.effect?.(() => services?.inputTriggers?.registerSource?.(visionReferenceSource), 'deepseek-vision: reference source')
       ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
@@ -579,7 +610,21 @@ window.__ModuleLoader__.load({
         id: 'deepseek-vision-preview',
         order: 10,
         inject: (sessionId) => {
-          if (typeof sessionId === 'string') activeSessionId = sessionId
+          if (typeof sessionId === 'string') {
+            if (sessionId !== boundSessionId) {
+              const previous = boundSessionId
+              boundSessionId = sessionId
+              activeSessionId = sessionId
+              if (previous !== null) {
+                // Session switched: drop the previous conversation's preview
+                // strip. Deferred to a microtask so we never reset (and
+                // re-render subscribers) in the middle of a render pass.
+                queueMicrotask(() => {
+                  if (boundSessionId === sessionId) resetPreviews()
+                })
+              }
+            }
+          }
           return {}
         },
       }, VisionPreviewDock))

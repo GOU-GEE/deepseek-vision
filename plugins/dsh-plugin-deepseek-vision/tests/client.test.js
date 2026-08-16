@@ -351,3 +351,109 @@ test('successful send auto-clears the thumbnail strip; a failed send keeps it', 
   assert.deepEqual(client.previewInternals.list(), [])
   assert.deepEqual(revoked, ['blob:a.jpg'])
 })
+
+test('switching conversation sessions clears the previous session preview strip', async () => {
+  const client = await loadClient()
+  const listeners = new Map()
+  const facade = makeInputFacade()
+  globalThis.Event = class { constructor(type, options) { this.type = type; Object.assign(this, options) } }
+  globalThis.URL = { createObjectURL: file => `blob:${file.name}`, revokeObjectURL: () => undefined }
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ path: '/tmp/paste-a.jpg' }) })
+  const target = { matches: () => true, focus: () => undefined, dispatchEvent: () => undefined }
+  globalThis.document = textDeepSeekDocument(target, listeners)
+  const harness = applyWithHarness(client, listeners, facade)
+  const dock = harness.registeredSlots.find(entry => entry.options.id === 'deepseek-vision-preview')
+  assert.ok(dock)
+  await listeners.get('paste')({
+    target,
+    clipboardData: { items: [{ kind: 'file', getAsFile: () => ({ name: 'a.jpg', type: 'image/jpeg', size: 100, arrayBuffer: async () => new ArrayBuffer(1) }) }] },
+    preventDefault: () => undefined,
+    stopImmediatePropagation: () => undefined,
+  })
+  assert.equal(client.previewInternals.list().length, 1)
+  assert.equal(facade.state.occurrences.length, 1)
+  // Re-injecting the SAME session is a no-op: the strip stays.
+  dock.options.inject('session-test')
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.equal(client.previewInternals.list().length, 1)
+  // Switching sessions drops the previous strip (the old draft keeps its chip).
+  dock.options.inject('session-other')
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.deepEqual(client.previewInternals.list(), [])
+})
+
+test('removing a thumbnail mid-upload rebuilds the reference from the final ready set', async () => {
+  const client = await loadClient()
+  const listeners = new Map()
+  const facade = makeInputFacade()
+  globalThis.Event = class { constructor(type, options) { this.type = type; Object.assign(this, options) } }
+  globalThis.URL = { createObjectURL: file => `blob:${file.name}`, revokeObjectURL: () => undefined }
+  let resolveB
+  const gateB = new Promise(resolve => { resolveB = resolve })
+  globalThis.fetch = async (_route, options) => options?.body === 'b'
+    ? gateB
+    : ({ ok: true, json: async () => ({ path: '/tmp/a.jpg' }) })
+  const target = { matches: () => true, focus: () => undefined, dispatchEvent: () => undefined }
+  globalThis.document = textDeepSeekDocument(target, listeners)
+  const harness = applyWithHarness(client, listeners, facade)
+  const file = (name, body) => ({ name, type: 'image/jpeg', size: 100, arrayBuffer: async () => body })
+  const paste = listeners.get('paste')({
+    target,
+    clipboardData: {
+      items: [
+        { kind: 'file', getAsFile: () => file('a.jpg', 'a') },
+        { kind: 'file', getAsFile: () => file('b.jpg', 'b') },
+      ],
+    },
+    preventDefault: () => undefined,
+    stopImmediatePropagation: () => undefined,
+  })
+  // a settled, b still uploading: no reference exists yet.
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.equal(client.previewInternals.list().length, 2)
+  assert.equal(facade.state.occurrences.length, 0)
+  // Remove the settled a while b uploads.
+  const settledA = client.previewInternals.list().find(item => item.name === 'a.jpg')
+  client.previewInternals.remove(settledA.id)
+  assert.equal(facade.state.occurrences.length, 0)
+  resolveB({ ok: true, json: async () => ({ path: '/tmp/paste-b.jpg' }) })
+  await paste
+  // The final reference covers only the survivor b.
+  assert.equal(facade.state.occurrences.length, 1)
+  assert.equal(facade.state.occurrences[0].label, '🖼️')
+  const modelForm = await harness.registeredSources[0].codec.serialize(facade.state.occurrences[0].ref)
+  assert.ok(modelForm.includes('/tmp/paste-b.jpg'))
+  assert.ok(!modelForm.includes('/tmp/a.jpg'))
+  assert.equal(client.previewInternals.list().length, 1)
+})
+
+test('a send while uploads are in flight never injects a reference into the next draft', async () => {
+  const client = await loadClient()
+  const listeners = new Map()
+  const facade = makeInputFacade()
+  const revoked = []
+  globalThis.Event = class { constructor(type, options) { this.type = type; Object.assign(this, options) } }
+  globalThis.URL = { createObjectURL: file => `blob:${file.name}`, revokeObjectURL: url => revoked.push(url) }
+  let resolveUpload
+  const gate = new Promise(resolve => { resolveUpload = resolve })
+  globalThis.fetch = async () => gate
+  const target = { matches: () => true, focus: () => undefined, dispatchEvent: () => undefined }
+  globalThis.document = textDeepSeekDocument(target, listeners)
+  applyWithHarness(client, listeners, facade)
+  const paste = listeners.get('paste')({
+    target,
+    clipboardData: { items: [{ kind: 'file', getAsFile: () => ({ name: 'a.jpg', type: 'image/jpeg', size: 100, arrayBuffer: async () => new ArrayBuffer(1) }) }] },
+    preventDefault: () => undefined,
+    stopImmediatePropagation: () => undefined,
+  })
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.equal(client.previewInternals.list().length, 1)
+  // The user typed and sent while the upload was pending: draft emptied.
+  facade.input.setDraft('')
+  resolveUpload({ ok: true, json: async () => ({ path: '/tmp/paste-a.jpg' }) })
+  await paste
+  assert.deepEqual(client.previewInternals.list(), [])
+  assert.equal(facade.state.occurrences.length, 0)
+  assert.equal(facade.state.draft, '')
+  assert.deepEqual(revoked, ['blob:a.jpg'])
+})

@@ -49,7 +49,7 @@ glm-4.6v-flash）：
 2. 进入 plugins/dsh-plugin-deepseek-vision，运行 npm ci --ignore-scripts、npm test，
    再以可用的 Python 设置 VISION_BUILD_PYTHON 并运行 npm pack；检查 tarball 内含 LICENSE
    和 runtime/deepseek_vision_mcp-<pyproject 中的版本>-py3-none-any.whl
-   （当前 main 为 deepseek_vision_mcp-0.3.2-py3-none-any.whl）。
+   （当前 main 为 deepseek_vision_mcp-0.4.0-py3-none-any.whl）。
 3. 确认 `/Applications/DeepSeek Harness.app` 存在并读取它的实际 DSH 版本；先让我用
    Cmd+Q 完全退出桌面版，再使用 App 内置的 DSH CLI，把源码构建的 tarball 合并安装到
    默认 `web` profile。不要尝试安装尚未发布的 npm 版本，不覆盖整个 profile。用同一
@@ -453,7 +453,7 @@ DeepSeek Harness（2026-08-13 发布，目前处于 Developer Preview）原生�
 
 ```bash
 export VISION_API_KEY='你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.3.2
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.0
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
@@ -475,8 +475,9 @@ DeepSeek 后可直接粘贴或拖入图片：插件把图片安全保存为临�
   单图调用 `analyze_image`，多图调用 `compare_images`。
 - **有文字发送**：用户已输入自己的问题（如“这是什么动物？”）时，只传递图片路径，
   不注入预设指令，模型按用户的问题选择工具与任务。
-- **发送后自动清理**：消息发送成功后缩略图卡带自动关闭并释放本地预览；发送失败时
-  保留缩略图，避免丢失图片。
+- **发送后自动清理**：消息发送成功后缩略图卡带自动关闭并释放本地预览；发送未成功时
+  图片不丢失——引用序列化失败时缩略图与引用保留可重试，host 层失败时 DSH 会把
+  序列化文本（含图片路径）恢复回输入框。
 - **手动移除**：点击缩略图右上角 × 可移除该图片，并同步撤销输入框内的引用；
   多图移除一张后自动重建剩余图片的指令。
 
@@ -586,7 +587,7 @@ mkdir -p ~/.dsh/skills && cp -r skills/vision ~/.dsh/skills/
 2. 输入框内只有 `🖼️` 引用标记，没有 `请调用 mcp__deepseek-vision__…` 长文本；
 3. 不输入文字直接发送 → 自动调用 `analyze_image`（多图 `compare_images`）；
 4. 输入自己的问题再发送 → 只按你的问题分析，不注入预设指令；
-5. 发送成功后缩略图卡带自动关闭；发送失败则保留缩略图。
+5. 发送成功后缩略图卡带自动关闭；发送未成功时图片不丢失（缩略图或路径保留）。
 
 ---
 
