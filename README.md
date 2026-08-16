@@ -220,6 +220,7 @@ glm-4.6v-flash）：
 | 智谱 AI | `https://open.bigmodel.cn/api/paas/v4` | `glm-4.6v-flash` | **免费，推荐**（GLM-4.6V 系列的免费版，当前免费视觉模型里效果最好） |
 | 硅基流动 | `https://api.siliconflow.cn/v1` | `Qwen/Qwen2.5-VL-7B-Instruct` | 部分模型免费 |
 | 通义千问 DashScope | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-vl-plus` | 阿里云百炼 |
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-2.5-flash` | 免费层无需绑卡（AI Studio 获取 Key）；国内访问需代理 |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o` / `gpt-4o-mini` | 付费 |
 | 其他兼容服务商 | 各自的 base URL | 各自的视觉模型名 | 任意 |
 

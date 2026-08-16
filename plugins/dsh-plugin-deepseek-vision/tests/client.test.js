@@ -109,6 +109,8 @@ test('client registers listeners, settings card, composer dock, and hidden refer
   const client = await loadClient()
   assert.deepEqual(client.inject, ['slots', 'sessions', 'conversation', 'inputTriggers'])
   assert.equal(client.PROVIDERS.zhipu.model, 'glm-4.6v-flash')
+  assert.equal(client.PROVIDERS.gemini.model, 'gemini-2.5-flash')
+  assert.equal(client.PROVIDERS.gemini.baseUrl, 'https://generativelanguage.googleapis.com/v1beta/openai/')
   const listeners = new Map()
   globalThis.document = {
     addEventListener: (...args) => listeners.set(args[0], args[1]),

@@ -58,6 +58,7 @@ cp -r skills/vision ~/.dsh/skills/
 | 智谱 AI（默认） | https://open.bigmodel.cn/api/paas/v4 | `glm-4.6v-flash`（免费） |
 | 硅基流动 | https://api.siliconflow.cn/v1 | `Qwen/Qwen2.5-VL-7B-Instruct` |
 | 通义千问 | https://dashscope.aliyuncs.com/compatible-mode/v1 | `qwen-vl-plus` |
+| Google Gemini | https://generativelanguage.googleapis.com/v1beta/openai/ | `gemini-2.5-flash`（免费层） |
 
 关键环境变量：`VISION_API_KEY`（必填）、`VISION_API_KEYS`（多 Key 逗号分隔，429 轮换）、
 `VISION_MODELS`（同服务商降级链）、`VISION_FALLBACK_API_KEY`（备用服务商）、

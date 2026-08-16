@@ -11,6 +11,7 @@ window.__ModuleLoader__.load({
       zhipu: { label: '智谱 GLM（推荐免费）', model: 'glm-4.6v-flash', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
       siliconflow: { label: '硅基流动', model: 'Qwen/Qwen2.5-VL-7B-Instruct', baseUrl: 'https://api.siliconflow.cn/v1' },
       dashscope: { label: '通义千问', model: 'qwen-vl-plus', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+      gemini: { label: 'Google Gemini（免费额度）', model: 'gemini-2.5-flash', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/' },
       custom: { label: '自定义 OpenAI 兼容服务', model: '', baseUrl: '' },
     }
     const cardStyle = { listStyle: 'none', border: '1px solid var(--dsw-alias-border-l2, #d0d7de)', background: 'var(--dsw-alias-bg-layer-3, transparent)', borderRadius: 12, overflow: 'hidden' }
