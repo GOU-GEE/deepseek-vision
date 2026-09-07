@@ -25,11 +25,17 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
 
 ## 要求
 
-- DeepSeek Harness `0.1.0-rc.5` / `0.1.0-rc.6`（兼容目标：`>=0.1.0-rc.5 <0.2.0`）
+- DeepSeek Harness `0.1.0-rc.5`、`0.1.0-rc.6`、`0.1.2-alpha.5`、
+  `0.1.2-rc.1`、`0.1.3-alpha.1`（后三个版本已按官方固定标签逐项审查插件加载、
+  MCP 客户端导出和 Web Client 注入契约）
 - 使用 DSH 桌面版时无需另装 Node；从源码构建才需要 Node.js `22.19+` 或 `24+`
 - 从源码安装才需要 Corepack/pnpm；安装已发布的 Bundle 由 DSH 安装器处理
 - 有 Python `3.10+` 时直接复用；没有时插件自动准备隔离 CPython 3.12
 - 首次启动需要访问 GitHub Releases 与 PyPI；后续启动复用本地缓存
+
+精确版本声明的固定标签与审查边界见
+[`docs/DSH_COMPATIBILITY.md`](../../docs/DSH_COMPATIBILITY.md)。这些声明是作者侧源码兼容性
+证据，不代替 DSH STORE 独立的安装、运行或安全验收。
 
 ## 安装
 
@@ -37,7 +43,7 @@ DeepSeek Harness 原生视觉 Bundle。文本版 DeepSeek 遇到图片时，通�
 
 ```bash
 export VISION_API_KEY='你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.1
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.2
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
@@ -45,7 +51,7 @@ Windows PowerShell：
 
 ```powershell
 $env:VISION_API_KEY = '你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.1
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.2
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 

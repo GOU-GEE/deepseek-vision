@@ -1,6 +1,17 @@
 # Changelog
 
-## v0.4.1（2026-08-16）— 当前 latest
+## v0.4.2（2026-09-07）— 当前 latest
+
+### 🔧 DSH STORE 合约修复
+
+- Bundle Patch 改用插件自有的 `dsh-plugin-deepseek-vision/mcp` 桥接入口，继续复用
+  DSH 内置 MCP 客户端，但不再让第三方 Patch 直接声明受保护的 `@deepseek-ai/*` 名称。
+- 新增 DSH 精确兼容矩阵，声明 `0.1.2-alpha.5`、`0.1.2-rc.1`、
+  `0.1.3-alpha.1` 兼容，并记录固定官方标签与源码契约审查边界。
+- 补齐新旧 DSH Web Client 依赖顺序，新增 Bundle ID、受保护命名空间和兼容矩阵测试。
+- CI 的一次性 Profile 流程新增卸载验收。
+
+## v0.4.1（2026-08-16）
 
 ### ✨ 新增
 

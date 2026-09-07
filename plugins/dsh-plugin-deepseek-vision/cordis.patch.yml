@@ -10,7 +10,7 @@
       name: dsh-plugin-deepseek-vision
 
     - id: deepseek-vision-mcp
-      name: '@deepseek-ai/dsh-mcp-client'
+      name: dsh-plugin-deepseek-vision/mcp
       config:
         serverName: deepseek-vision
         transport: stdio

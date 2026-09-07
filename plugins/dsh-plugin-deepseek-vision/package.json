@@ -1,11 +1,12 @@
 {
   "name": "dsh-plugin-deepseek-vision",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "DeepSeek Harness 原生视觉 Bundle：粘贴或拖入图片，通过托管的 deepseek-vision-mcp 调用 OpenAI 兼容视觉模型。",
   "type": "module",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
+    "./mcp": "./mcp.js",
     "./client": "./client.js",
     "./launcher": "./launcher.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
@@ -16,6 +17,7 @@
   },
   "files": [
     "index.js",
+    "mcp.js",
     "client.js",
     "launcher.js",
     "cordis.patch.yml",
@@ -25,12 +27,27 @@
     "LICENSE"
   ],
   "dsh": {
+    "compatibility": {
+      "dsh": "0.1.0-rc.5 || 0.1.0-rc.6 || 0.1.2-alpha.5 || 0.1.2-rc.1 || 0.1.3-alpha.1",
+      "dshReleases": {
+        "0.1.2-alpha.5": "compatible",
+        "0.1.2-rc.1": "compatible",
+        "0.1.3-alpha.1": "compatible"
+      },
+      "node": "^22.19.0 || >=24.0.0",
+      "profiles": [
+        "web"
+      ]
+    },
     "bundle": {
       "patch": "./cordis.patch.yml"
     },
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-input-trigger",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-settings-plugins"
       ],
@@ -75,7 +92,7 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh": ">=0.1.0-rc.5 <0.2.0"
+    "@deepseek-ai/dsh": "0.1.0-rc.5 || 0.1.0-rc.6 || 0.1.2-alpha.5 || 0.1.2-rc.1 || 0.1.3-alpha.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh": {

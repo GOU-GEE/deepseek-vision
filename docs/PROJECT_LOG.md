@@ -5,7 +5,7 @@
 > （发布流程）、[docs/BENCHMARK.md](docs/BENCHMARK.md)（对比测试）、
 > [CHANGELOG.md](CHANGELOG.md)（版本历史）。
 >
-> 最后更新：2026-08-16
+> 最后更新：2026-09-07
 
 ---
 
@@ -16,15 +16,15 @@
 - **原理**：DeepSeek 不直接「看」图；用户发图片时，主模型调用视觉工具，把图片交给
   OpenAI 兼容视觉模型（默认智谱免费 `glm-4.6v-flash`）识别，识别文本再喂回 DeepSeek。
 - **GitHub**：https://github.com/GOU-GEE/deepseek-vision
-- **当前版本**：`0.4.1`（PyPI 与 npm 双端一致）
+- **当前版本**：`0.4.2`（PyPI 与 npm 双端一致）
 - **许可证**：MIT
 
 ## 2. 交付物（均已发布）
 
 | 形态 | 包名 / 地址 | 版本 |
 | --- | --- | --- |
-| Python MCP Server | PyPI `deepseek-vision-mcp` | 0.4.1 |
-| DSH 原生插件（bundle） | npm `dsh-plugin-deepseek-vision` | 0.4.1 |
+| Python MCP Server | PyPI `deepseek-vision-mcp` | 0.4.2 |
+| DSH 原生插件（bundle） | npm `dsh-plugin-deepseek-vision` | 0.4.2 |
 | 源码 | GitHub `GOU-GEE/deepseek-vision`，分支 `main` | 最新提交见 `git log` |
 
 **4 个 MCP 工具**：`analyze_image`（单图，路径/URL/base64）、`analyze_clipboard`
@@ -103,6 +103,8 @@ scripts/verify_dsh_plugin.py          # DSH 托管运行时握手验收
   Publishing（0.4.0，latest）；全新 venv pip 安装与 npm view 验收通过
 - ✅ **v0.4.1 发布完成**：配置页新增 Google Gemini 免费服务商预设
   （gemini-2.5-flash，OpenAI 兼容端点）；npm 手动发布 + PyPI Trusted Publishing
+- ✅ **v0.4.2 发布完成**：Bundle Patch 改用插件自有 MCP 桥接入口，补齐
+  DSH 最新三版精确兼容声明、固定标签源码审查证据及一次性 Profile 卸载验收
 
 ## 7. 待办 / 进行中
 

@@ -49,7 +49,7 @@ glm-4.6v-flash）：
 2. 进入 plugins/dsh-plugin-deepseek-vision，运行 npm ci --ignore-scripts、npm test，
    再以可用的 Python 设置 VISION_BUILD_PYTHON 并运行 npm pack；检查 tarball 内含 LICENSE
    和 runtime/deepseek_vision_mcp-<pyproject 中的版本>-py3-none-any.whl
-   （当前 main 为 deepseek_vision_mcp-0.4.1-py3-none-any.whl）。
+   （当前 main 为 deepseek_vision_mcp-0.4.2-py3-none-any.whl）。
 3. 确认 `/Applications/DeepSeek Harness.app` 存在并读取它的实际 DSH 版本；先让我用
    Cmd+Q 完全退出桌面版，再使用 App 内置的 DSH CLI，把源码构建的 tarball 合并安装到
    默认 `web` profile。不要尝试安装尚未发布的 npm 版本，不覆盖整个 profile。用同一
@@ -454,7 +454,7 @@ DeepSeek Harness（2026-08-13 发布，目前处于 Developer Preview）原生�
 
 ```bash
 export VISION_API_KEY='你的智谱APIKey'
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.1
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-plugin-deepseek-vision@0.4.2
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 web
 ```
 
@@ -506,7 +506,10 @@ Key。主服务持续遇到 429/5xx 时，插件在全局请求预算内自动�
 
 当前已在官方 macOS 桌面版内置的 DSH `0.1.0-rc.5` 实机验证，并在 CI 验证 npm
 公开版本 `0.1.0-rc.6` 的干净 profile 安装（官方未向 npm 发布 `rc.5`，因此 CI 无法
-在线安装该版本）。DSH 仍处于预览期，升级后应重新执行一次连接和图片验收。
+在线安装该版本）。此外，插件 `0.4.2` 已按官方固定标签逐项审查 `0.1.2-alpha.5`、
+`0.1.2-rc.1`、`0.1.3-alpha.1` 的 MCP、Web Client 与槽位契约；固定 Commit 和证据边界
+记录在 [`docs/DSH_COMPATIBILITY.md`](docs/DSH_COMPATIBILITY.md)。DSH 仍处于预览期，
+升级后应重新执行一次连接和图片验收。
 
 > 包内自带完整说明与等效的手写配置（`plugins/dsh-plugin-deepseek-vision/README.md`）。
 > 本包采用 bundle patch 形态并使用 DSH 内置 `dsh-mcp-client`。当前 npm 版本发布前，
