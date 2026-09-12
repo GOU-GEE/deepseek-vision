@@ -602,8 +602,7 @@ window.__ModuleLoader__.load({
       ctx.effect?.(() => services?.inputTriggers?.registerSource?.(visionReferenceSource), 'deepseek-vision: reference source')
       ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
         name: 'settings.plugin.item',
-        id: 'deepseek-vision',
-        order: 25,
+        key: 'deepseek-vision',
         inject: () => ({}),
       }, VisionSettingsCard))
       ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
